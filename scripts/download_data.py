@@ -45,6 +45,7 @@ def main():
 
     print("Loading WMT14 en-de dataset from Hugging Face...")
     # Hugging Face datasets에서 WMT14 en-de 데이터 로드
+    # Configuration should be "de-en" which means German-English pair in HF WMT14
     dataset = load_dataset("wmt14", "de-en", trust_remote_code=True)
     
     # dataset에는 'train', 'validation', 'test' split이 있음

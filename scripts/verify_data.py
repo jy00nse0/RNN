@@ -17,12 +17,16 @@ def check_file_exists(path):
         print(f"❌ Missing: {path}")
         return None
     
+    # Count lines efficiently without loading entire file into memory
+    line_count = 0
+    empty_count = 0
+    
     with open(path, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
-        line_count = len(lines)
-        
-    # Check for empty lines
-    empty_count = sum(1 for line in lines if not line.strip())
+        for line in f:
+            line_count += 1
+            if not line.strip():
+                empty_count += 1
+    
     if empty_count > 0:
         print(f"⚠️  Warning: {path} has {empty_count} empty lines")
     
