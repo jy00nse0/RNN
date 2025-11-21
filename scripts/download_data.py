@@ -1,43 +1,31 @@
 #!/usr/bin/env python3
 # ---------------------------------------------------------
-# WMT14 English-German 병렬 데이터 자동 다운로드 스크립트
+# WMT14 English-German 병렬 데이터 자동 다운로드 스크립트 (Hugging Face datasets 사용)
 # 논문 전처리 재현:
 #  - 문장 길이 ≤50
 #  - 소스 문장 뒤집기(reverse)
 # ---------------------------------------------------------
 
 import os
-import urllib.request
-import tarfile
-import random
+from datasets import load_dataset
 
 
-DATA_URL = "https://nlp.stanford.edu/projects/nmt/wmt14.en-de.train.tgz"
-DEV_URL = "https://nlp.stanford.edu/projects/nmt/newstest2013.en-de.tgz"
-TEST_URL = "https://nlp.stanford.edu/projects/nmt/newstest2014.en-de.tgz"
-
-def download_and_extract(url, dest):
-    fname = url.split("/")[-1]
-    fpath = os.path.join(dest, fname)
-
-    if not os.path.exists(fpath):
-        print(f"Downloading {fname} ...")
-        urllib.request.urlretrieve(url, fpath)
-
-    print(f"Extracting {fname} ...")
-    with tarfile.open(fpath, "r:gz") as tar:
-        tar.extractall(dest)
-
-
-def process_parallel(src_path, tgt_path, out_src, out_tgt, max_len=50, reverse=True):
-    with open(src_path, encoding="utf-8") as fs, \
-         open(tgt_path, encoding="utf-8") as ft, \
-         open(out_src, "w", encoding="utf-8") as osrc, \
+def process_dataset(dataset, out_src, out_tgt, max_len=50, reverse=True):
+    """
+    Hugging Face dataset을 처리하여 파일로 저장
+    - 길이 필터링 (max_len 이하)
+    - 소스 문장 뒤집기 (reverse=True)
+    """
+    with open(out_src, "w", encoding="utf-8") as osrc, \
          open(out_tgt, "w", encoding="utf-8") as otgt:
-
-        for s, t in zip(fs, ft):
-            s_tok = s.strip().split()
-            t_tok = t.strip().split()
+        
+        for example in dataset:
+            # Hugging Face WMT14 dataset의 'translation' 필드 접근
+            src_text = example['translation']['en']
+            tgt_text = example['translation']['de']
+            
+            s_tok = src_text.strip().split()
+            t_tok = tgt_text.strip().split()
 
             if len(s_tok) == 0 or len(t_tok) == 0:
                 continue
@@ -55,37 +43,39 @@ def main():
     out_dir = "data/wmt14_raw"
     os.makedirs(out_dir, exist_ok=True)
 
-    # 1) Download raw corpora
-    download_and_extract(DATA_URL, out_dir)
-    download_and_extract(DEV_URL, out_dir)
-    download_and_extract(TEST_URL, out_dir)
+    print("Loading WMT14 en-de dataset from Hugging Face...")
+    # Hugging Face datasets에서 WMT14 en-de 데이터 로드
+    dataset = load_dataset("wmt14", "de-en", trust_remote_code=True)
+    
+    # dataset에는 'train', 'validation', 'test' split이 있음
+    train_data = dataset['train']
+    valid_data = dataset['validation']  # newstest2013 상당
+    test_data = dataset['test']  # newstest2014 상당
+    
+    print(f"Train samples: {len(train_data)}")
+    print(f"Validation samples: {len(valid_data)}")
+    print(f"Test samples: {len(test_data)}")
 
-    # Extracted file names (Stanford NMT processed version)
-    train_src = os.path.join(out_dir, "train.en")
-    train_tgt = os.path.join(out_dir, "train.de")
-    dev_src = os.path.join(out_dir, "newstest2013.en")
-    dev_tgt = os.path.join(out_dir, "newstest2013.de")
-    test_src = os.path.join(out_dir, "newstest2014.en")
-    test_tgt = os.path.join(out_dir, "newstest2014.de")
+    # 전처리 적용 + 파일 저장
+    # 출력 파일명은 기존 스크립트와 동일하게 유지
+    print("Applying preprocessing (length≤50, reverse source)...")
+    
+    print("Processing train split...")
+    process_dataset(train_data,
+                    os.path.join(out_dir, "train.clean.en"),
+                    os.path.join(out_dir, "train.clean.de"))
+    
+    print("Processing validation split...")
+    process_dataset(valid_data,
+                    os.path.join(out_dir, "valid.clean.en"),
+                    os.path.join(out_dir, "valid.clean.de"))
+    
+    print("Processing test split...")
+    process_dataset(test_data,
+                    os.path.join(out_dir, "test.clean.en"),
+                    os.path.join(out_dir, "test.clean.de"))
 
-    # Ensure existence
-    for p in [train_src, train_tgt, dev_src, dev_tgt, test_src, test_tgt]:
-        if not os.path.exists(p):
-            raise FileNotFoundError(f"Missing required file: {p}")
-
-    # 2) Clean + length≤50 + reverse src
-    print("Applying preprocessing...")
-    process_parallel(train_src, train_tgt,
-                     os.path.join(out_dir, "train.clean.en"),
-                     os.path.join(out_dir, "train.clean.de"))
-    process_parallel(dev_src, dev_tgt,
-                     os.path.join(out_dir, "valid.clean.en"),
-                     os.path.join(out_dir, "valid.clean.de"))
-    process_parallel(test_src, test_tgt,
-                     os.path.join(out_dir, "test.clean.en"),
-                     os.path.join(out_dir, "test.clean.de"))
-
-    print("Done! Preprocessed raw data saved in:", out_dir)
+    print("Done! Preprocessed data saved in:", out_dir)
 
 
 if __name__ == "__main__":

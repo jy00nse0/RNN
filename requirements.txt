@@ -1,0 +1,5 @@
+# Core dependencies
+torch>=1.9.0
+datasets>=2.0.0
+sentencepiece>=0.1.96
+sacrebleu>=2.0.0
