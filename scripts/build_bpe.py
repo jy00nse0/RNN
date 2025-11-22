@@ -13,12 +13,15 @@ def train_bpe(input_file, model_prefix, vocab_size=50000):
     """
     print(f"Training SentencePiece BPE ... vocab={vocab_size}")
     spm.SentencePieceTrainer.Train(
-        input=f"--input={input_file} "
-              f"--model_prefix={model_prefix} "
-              f"--vocab_size={vocab_size} "
-              f"--model_type=bpe "
-              f"--character_coverage=1.0 "
-              f"--unk_id=3 --bos_id=1 --eos_id=2 --pad_id=0"
+        input=input_file,
+        model_prefix=model_prefix,
+        vocab_size=vocab_size,
+        model_type='bpe',
+        character_coverage=1.0,
+        unk_id=3,
+        bos_id=1,
+        eos_id=2,
+        pad_id=0
     )
     print("BPE model saved:", model_prefix + ".model")
 
