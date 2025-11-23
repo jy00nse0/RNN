@@ -47,7 +47,6 @@ class MyNMTDataset(Dataset):
             
             # Show sample mismatches
             min_len = min(src_len, tgt_len)
-            max_len_val = max(src_len, tgt_len)
             
             if min_len > 0:
                 print(f"\n  First few aligned samples (up to 5):")
