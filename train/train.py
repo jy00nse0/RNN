@@ -76,9 +76,7 @@ def train_step(
     loss = compute_loss(log_probs, tgt, pad_idx=tgt_pad_idx)
 
     loss.backward()
-    torch.nn.utils.clip_grad_norm_((model.parameters(), max_norm=clip)
-                                   if hasattr(torch.nn.utils, "clip_grad_norm_")
-                                   else None)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip)
 
     optimizer.step()
 

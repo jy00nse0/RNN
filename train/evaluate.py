@@ -4,8 +4,13 @@
 # sacreBLEU 를 사용하여 WMT 표준 BLEU 점수 계산
 # ---------------------------------------------------------
 
+import sys
+import os
 import torch
 from sacrebleu import corpus_bleu
+
+# Add test directory to path for decode import
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'test'))
 from decode import beam_search
 
 
