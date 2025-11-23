@@ -86,12 +86,13 @@ def main():
 
     # Model
     model = Seq2Seq(
-        vocab_size=vocab_size,
-        embed_dim=1000,
-        hidden_dim=1000,
+        src_vocab_size=vocab_size,
+        tgt_vocab_size=vocab_size,
+        emb_size=1000,
+        hidden_size=1000,
         num_layers=4,
-        bos_idx=args.bos_idx,
-        eos_idx=args.eos_idx,
+        src_pad_idx=args.pad_idx,
+        tgt_pad_idx=args.pad_idx,
     ).to(device)
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr)

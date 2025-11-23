@@ -54,7 +54,8 @@ class MyNMTDataset(Dataset):
         tokens는 이미 BPE로 split된 문자열 토큰 리스트
         => SentencePiece vocabulary의 piece ID로 인코딩
         """
-        return self.sp.encode(tokens, out_type=int)
+        # Join tokens back to string and encode
+        return self.sp.encode(' '.join(tokens), out_type=int)
 
     def __getitem__(self, idx):
         src_tokens = self.src_data[idx]
@@ -76,12 +77,11 @@ class MyNMTDataset(Dataset):
         - 길이 기준 정렬 => pack_padded_sequence 안정화
         - padding 수행
         """
+        # Sort by src length to keep src-tgt pairs together
+        batch = sorted(batch, key=lambda x: len(x[0]), reverse=True)
+        
         src_seqs = [b[0] for b in batch]
         tgt_seqs = [b[1] for b in batch]
-
-        # 길이 기준 내림차순 정렬
-        src_seqs = sorted(src_seqs, key=len, reverse=True)
-        tgt_seqs = sorted(tgt_seqs, key=len, reverse=True)
 
         src_lengths = torch.tensor([len(s) for s in src_seqs])
         tgt_lengths = torch.tensor([len(t) for t in tgt_seqs])
