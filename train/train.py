@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 from typing import Tuple
+import time
 
 
 def compute_loss(
@@ -41,7 +42,7 @@ def train_step(
     tgt_pad_idx: int,
     device: torch.device,
     clip: float = 5.0,
-) -> float:
+) -> Tuple[float, int]:
     """
     한 미니배치에 대해:
       - forward
@@ -49,7 +50,7 @@ def train_step(
       - backward
       - gradient clipping
       - optimizer step
-    실행하고 loss(float)를 반환.
+    실행하고 loss(float)와 처리된 토큰 수(int)를 반환.
 
     batch: (src, src_lengths, tgt, tgt_lengths)
       src: (batch, src_len)
@@ -75,12 +76,16 @@ def train_step(
 
     loss = compute_loss(log_probs, tgt, pad_idx=tgt_pad_idx)
 
+    # 처리된 토큰 수 계산 (pad 제외)
+    tgt_gold = tgt[:, 1:]
+    num_tokens = (tgt_gold != tgt_pad_idx).sum().item()
+
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip)
 
     optimizer.step()
 
-    return float(loss.item())
+    return float(loss.item()), num_tokens
 
 
 def train_epoch(
@@ -93,13 +98,27 @@ def train_epoch(
 ) -> float:
     """
     하나의 epoch 전체를 학습하고 평균 loss 반환.
+    진행률 1% 증가마다 진행률, WPS, ETA를 출력.
     """
     model.train()
     total_loss = 0.0
     n_batches = 0
 
+    # 전체 토큰 수 계산 (total_words)
+    total_words = 0
     for batch in dataloader:
-        loss = train_step(
+        _, _, tgt, _ = batch
+        tgt_gold = tgt[:, 1:]  # 첫 토큰(<bos>) 제외
+        num_tokens = (tgt_gold != tgt_pad_idx).sum().item()
+        total_words += num_tokens
+
+    # 진행률 추적 변수
+    processed_words = 0
+    last_reported_progress = -1
+    start_time = time.time()
+
+    for batch in dataloader:
+        loss, num_tokens = train_step(
             model=model,
             batch=batch,
             optimizer=optimizer,
@@ -109,6 +128,24 @@ def train_epoch(
         )
         total_loss += loss
         n_batches += 1
+        processed_words += num_tokens
+
+        # 진행률 계산 (0~100)
+        if total_words > 0:
+            progress = (processed_words / total_words) * 100
+            current_progress_pct = int(progress)
+
+            # 1% 증가할 때마다 출력
+            if current_progress_pct > last_reported_progress:
+                elapsed_time = time.time() - start_time
+                if elapsed_time > 0:
+                    wps = processed_words / elapsed_time  # Words Per Second
+                    remaining_words = total_words - processed_words
+                    eta_seconds = remaining_words / wps if wps > 0 else 0
+                    eta_minutes = eta_seconds / 60
+
+                    print(f"  Progress: {current_progress_pct}% | WPS: {wps:.2f} | ETA: {eta_minutes:.2f} min")
+                    last_reported_progress = current_progress_pct
 
     if n_batches == 0:
         return 0.0
