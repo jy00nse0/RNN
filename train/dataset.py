@@ -2,6 +2,7 @@
 import torch
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
+from typing import Optional
 import sentencepiece as spm
 
 
@@ -19,7 +20,7 @@ class MyNMTDataset(Dataset):
         eos_idx: int = 2,
         pad_idx: int = 0,
         max_len: int = 50,
-        max_lines: int = None,
+        max_lines: Optional[int] = None,
     ):
         self.pad_idx = pad_idx
         self.bos_idx = bos_idx
