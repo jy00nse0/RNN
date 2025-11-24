@@ -19,11 +19,13 @@ class MyNMTDataset(Dataset):
         eos_idx: int = 2,
         pad_idx: int = 0,
         max_len: int = 50,
+        max_lines: int = None,
     ):
         self.pad_idx = pad_idx
         self.bos_idx = bos_idx
         self.eos_idx = eos_idx
         self.max_len = max_len
+        self.max_lines = max_lines
 
         # SentencePiece 모델 로드
         self.sp = spm.SentencePieceProcessor()
@@ -44,6 +46,8 @@ class MyNMTDataset(Dataset):
                 toks = line.strip().split()
                 if 0 < len(toks) <= self.max_len:
                     data.append(toks)
+                if self.max_lines is not None and len(data) >= self.max_lines:
+                    break
         return data
 
     def __len__(self):
