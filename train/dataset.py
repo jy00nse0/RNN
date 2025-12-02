@@ -32,24 +32,39 @@ class MyNMTDataset(Dataset):
         self.sp = spm.SentencePieceProcessor()
         self.sp.load(bpe_model_path)
 
-        self.src_data = self._read_file(src_path)
-        self.tgt_data = self._read_file(tgt_path)
-
-        assert len(self.src_data) == len(self.tgt_data), "src/tgt 라인 수 다름"
+        self.src_data, self.tgt_data = self._read_parallel_files(src_path, tgt_path)
 
         self.src_vocab_size = self.sp.get_piece_size()
         self.tgt_vocab_size = self.sp.get_piece_size()
 
-    def _read_file(self, path):
-        data = []
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                toks = line.strip().split()
-                if 0 < len(toks) <= self.max_len:
-                    data.append(toks)
-                if self.max_lines is not None and len(data) >= self.max_lines:
-                    break
-        return data
+    def _read_parallel_files(self, src_path, tgt_path):
+        """
+        Read source and target files in parallel, filtering pairs together.
+        A pair is only kept if BOTH source and target satisfy length constraints.
+        """
+        src_data = []
+        tgt_data = []
+        with open(src_path, "r", encoding="utf-8") as src_f, \
+             open(tgt_path, "r", encoding="utf-8") as tgt_f:
+            src_lines = src_f.readlines()
+            tgt_lines = tgt_f.readlines()
+
+        if len(src_lines) != len(tgt_lines):
+            raise ValueError(
+                f"Source and target files have different line counts: "
+                f"{len(src_lines)} vs {len(tgt_lines)}"
+            )
+
+        for src_line, tgt_line in zip(src_lines, tgt_lines):
+            src_toks = src_line.strip().split()
+            tgt_toks = tgt_line.strip().split()
+            # Keep pair only if both are non-empty and within max_len
+            if 0 < len(src_toks) <= self.max_len and 0 < len(tgt_toks) <= self.max_len:
+                src_data.append(src_toks)
+                tgt_data.append(tgt_toks)
+            if self.max_lines is not None and len(src_data) >= self.max_lines:
+                break
+        return src_data, tgt_data
 
     def __len__(self):
         return len(self.src_data)
