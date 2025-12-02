@@ -28,6 +28,8 @@ def parse_args():
     parser.add_argument("--beam_size", type=int, default=10)
     parser.add_argument("--max_len", type=int, default=100)
     parser.add_argument("--save_dir", type=str, default="checkpoints")
+    parser.add_argument("--train_5000lines", action="store_true", default=False,
+                        help="Enable sample test mode: train on first 5000 line pairs only")
 
     # vocab setting
     parser.add_argument("--pad_idx", type=int, default=0)
@@ -42,6 +44,9 @@ def build_dataloaders(args):
     sp = spm.SentencePieceProcessor()
     sp.load(f"{args.data_dir}/bpe.model")
 
+    # Determine max_lines based on train_5000lines flag
+    max_lines = 5000 if args.train_5000lines else None
+
     train_dataset = MyNMTDataset(
         src_path=f"{args.data_dir}/train.bpe.en",
         tgt_path=f"{args.data_dir}/train.bpe.de",
@@ -49,6 +54,7 @@ def build_dataloaders(args):
         bos_idx=args.bos_idx,
         eos_idx=args.eos_idx,
         pad_idx=args.pad_idx,
+        max_lines=max_lines,
     )
     valid_dataset = MyNMTDataset(
         src_path=f"{args.data_dir}/valid.bpe.en",

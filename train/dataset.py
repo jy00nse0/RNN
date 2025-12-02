@@ -2,6 +2,7 @@
 import torch
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
+from typing import Optional
 import sentencepiece as spm
 
 
@@ -20,12 +21,14 @@ class MyNMTDataset(Dataset):
         pad_idx: int = 0,
         max_len: int = 50,
         debug: bool = True,
+        max_lines: Optional[int] = None,
     ):
         self.pad_idx = pad_idx
         self.bos_idx = bos_idx
         self.eos_idx = eos_idx
         self.max_len = max_len
         self.debug = debug
+        self.max_lines = max_lines
 
         # SentencePiece 모델 로드
         self.sp = spm.SentencePieceProcessor()
@@ -81,6 +84,7 @@ class MyNMTDataset(Dataset):
             raise AssertionError(
                 f"Source/Target line count mismatch: src={src_len}, tgt={tgt_len}"
             )
+        self.src_data, self.tgt_data = self._read_parallel_files(src_path, tgt_path)
 
         self.src_vocab_size = self.sp.get_piece_size()
         self.tgt_vocab_size = self.sp.get_piece_size()
@@ -103,6 +107,34 @@ class MyNMTDataset(Dataset):
                 print(f"  Showing up to 3 samples: {samples}")
         
         return data
+    def _read_parallel_files(self, src_path, tgt_path):
+        """
+        Read source and target files in parallel, filtering pairs together.
+        A pair is only kept if BOTH source and target satisfy length constraints.
+        """
+        src_data = []
+        tgt_data = []
+        with open(src_path, "r", encoding="utf-8") as src_f, \
+             open(tgt_path, "r", encoding="utf-8") as tgt_f:
+            src_lines = src_f.readlines()
+            tgt_lines = tgt_f.readlines()
+
+        if len(src_lines) != len(tgt_lines):
+            raise ValueError(
+                f"Source and target files have different line counts: "
+                f"{len(src_lines)} vs {len(tgt_lines)}"
+            )
+
+        for src_line, tgt_line in zip(src_lines, tgt_lines):
+            src_toks = src_line.strip().split()
+            tgt_toks = tgt_line.strip().split()
+            # Keep pair only if both are non-empty and within max_len
+            if 0 < len(src_toks) <= self.max_len and 0 < len(tgt_toks) <= self.max_len:
+                src_data.append(src_toks)
+                tgt_data.append(tgt_toks)
+            if self.max_lines is not None and len(src_data) >= self.max_lines:
+                break
+        return src_data, tgt_data
 
     def __len__(self):
         return len(self.src_data)
