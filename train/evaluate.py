@@ -13,6 +13,12 @@ try:
 except Exception:
     tqdm = None
 
+# tqdm 옵션: 설치되어 있으면 진행바를 사용, 아니면 None으로 둬서 기존 동작 유지
+try:
+    from tqdm import tqdm
+except Exception:
+    tqdm = None
+
 # Add test directory to path for decode import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'test'))
 from decode import beam_search
@@ -39,7 +45,9 @@ def translate_dataset(
     all_hypotheses = []
     all_references = []
 
+    # tqdm가 available 하면 진행바로 감싸고, 아니면 원래 dataloader 사용
     iterator = tqdm(dataloader, desc="Translating", unit="sent") if tqdm is not None else dataloader
+
     for src, src_lengths, tgt, tgt_lengths in iterator:
         # single sentence
         src = src[0:1].to(device)
