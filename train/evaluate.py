@@ -8,6 +8,10 @@ import sys
 import os
 import torch
 from sacrebleu import corpus_bleu
+try:
+    from tqdm import tqdm
+except Exception:
+    tqdm = None
 
 # Add test directory to path for decode import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'test'))
@@ -35,7 +39,8 @@ def translate_dataset(
     all_hypotheses = []
     all_references = []
 
-    for src, src_lengths, tgt, tgt_lengths in dataloader:
+    iterator = tqdm(dataloader, desc="Translating", unit="sent") if tqdm is not None else dataloader
+    for src, src_lengths, tgt, tgt_lengths in iterator:
         # single sentence
         src = src[0:1].to(device)
         src_lengths = src_lengths[0:1].to(device)
