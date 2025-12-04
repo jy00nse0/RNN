@@ -26,6 +26,10 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1.0)
     parser.add_argument("--lr_decay_start", type=int, default=5)
     parser.add_argument("--beam_size", type=int, default=10)
+    # eval_beam_size: evaluation(BLEU) 시 사용할 beam 크기
+    # 우선 작은 beam(기본 1)을 사용하여 평가 시간을 단축하도록 기본값을 1로 설정
+    parser.add_argument("--eval_beam_size", type=int, default=1,
+                        help="Beam size used for evaluation (BLEU). Defaults to 1 to speed up evaluation.")
     parser.add_argument("--max_len", type=int, default=100)
     parser.add_argument("--save_dir", type=str, default="checkpoints")
     parser.add_argument("--train_5000lines", action="store_true", default=False,
@@ -119,6 +123,7 @@ def main():
             device=device,
         )
 
+        # Use eval_beam_size for BLEU evaluation to speed up evaluation loop.
         bleu = translate_dataset(
             model=model,
             dataloader=valid_loader,
@@ -126,7 +131,7 @@ def main():
             bos_idx=args.bos_idx,
             eos_idx=args.eos_idx,
             unk_idx=args.unk_idx,
-            beam_size=args.beam_size,
+            beam_size=args.eval_beam_size,
             max_len=args.max_len,
             device=device,
         )
