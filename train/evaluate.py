@@ -8,6 +8,10 @@ import sys
 import os
 import torch
 from sacrebleu import corpus_bleu
+try:
+    from tqdm import tqdm
+except Exception:
+    tqdm = None
 
 # tqdm 옵션: 설치되어 있으면 진행바를 사용, 아니면 None으로 둬서 기존 동작 유지
 try:
