@@ -13,13 +13,30 @@ from serialization import save_object, save_model, save_vocab
 from datetime import datetime
 from util import embedding_size_from_name
 
+"""
+[Revised] train.py for RNN Paper Reproduction
+Changes:
+1. Optimizer: Adam -> SGD (Paper Sec 4.1)
+2. Scheduler: Added Halving Schedule (Paper Sec 4.1)
+   - Base model: Halve after epoch 5
+   - Dropout model: Halve after epoch 8
+3. Defaults: Updated batch_size(128), lr(1.0) to match paper.
+"""
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Script for training seq2seq chatbot.')
-    parser.add_argument('--max-epochs', type=int, default=100, help='Max number of epochs models will be trained.')
-    parser.add_argument('--gradient-clip', type=float, default=5, help='Gradient clip value.')
-    parser.add_argument('--batch-size', type=int, default=32, help='Batch size.')
-    parser.add_argument('--learning-rate', type=float, default=1e-4, help='Initial learning rate.')
+    # [Paper] Total Epochs: 10 (Base) or 12 (Dropout)
+    parser.add_argument('--max-epochs', type=int, default=10, help='Max number of epochs models will be trained.')
+    # [Paper] Gradient Clipping: Norm > 5
+    parser.add_argument('--gradient-clip', type=float, default=5.0, help='Gradient clip value.')
+    # [Paper] Batch Size: 128
+    parser.add_argument('--batch-size', type=int, default=128, help='Batch size.')
+    # [Paper] Initial Learning Rate: 1.0 (SGD)
+    parser.add_argument('--learning-rate', type=float, default=1.0, help='Initial learning rate.')
+    # [Paper] LR Decay Start: 5 (Base) or 8 (Dropout)
+    parser.add_argument('--lr-decay-start', type=int, default=5, 
+                        help='Epoch after which to start halving learning rate. (Base: 5, Dropout: 8)')
+    
     parser.add_argument('--train-embeddings', action='store_true',
                         help='Should gradients be propagated to word embeddings.')
     parser.add_argument('--save-path', default='.save',
@@ -58,21 +75,21 @@ def parse_args():
     encoder_args = parser.add_argument_group('Encoder', 'Encoder hyperparameters.')
     encoder_args.add_argument('--encoder-rnn-cell', choices=['LSTM', 'GRU'], default='LSTM',
                               help='Encoder RNN cell type.')
-    encoder_args.add_argument('--encoder-hidden-size', type=int, default=128, help='Encoder RNN hidden size.')
-    encoder_args.add_argument('--encoder-num-layers', type=int, default=1, help='Encoder RNN number of layers.')
-    encoder_args.add_argument('--encoder-rnn-dropout', type=float, default=0.2, help='Encoder RNN dropout probability.')
+    encoder_args.add_argument('--encoder-hidden-size', type=int, default=1000, help='Encoder RNN hidden size.')
+    encoder_args.add_argument('--encoder-num-layers', type=int, default=4, help='Encoder RNN number of layers.')
+    encoder_args.add_argument('--encoder-rnn-dropout', type=float, default=0.0, help='Encoder RNN dropout probability.')
     encoder_args.add_argument('--encoder-bidirectional', action='store_true', help='Use bidirectional encoder.')
 
     # decoder hyperparameters
     decoder_args = parser.add_argument_group('Decoder', 'Decoder hyperparameters.')
-    decoder_args.add_argument('--decoder-type', choices=['bahdanau', 'luong'], default='bahdanau',
+    decoder_args.add_argument('--decoder-type', choices=['bahdanau', 'luong'], default='luong',
                               help='Type of the decoder.')
     decoder_args.add_argument('--decoder-rnn-cell', choices=['LSTM', 'GRU'], default='LSTM',
                               help='Decoder RNN cell type.')
-    decoder_args.add_argument('--decoder-hidden-size', type=int, default=128, help='Decoder RNN hidden size.')
-    decoder_args.add_argument('--decoder-num-layers', type=int, default=1, help='Decoder RNN number of layers.')
-    decoder_args.add_argument('--decoder-rnn-dropout', type=float, default=0.2, help='Decoder RNN dropout probability.')
-    decoder_args.add_argument('--luong-attn-hidden-size', type=int, default=128,
+    decoder_args.add_argument('--decoder-hidden-size', type=int, default=1000, help='Decoder RNN hidden size.')
+    decoder_args.add_argument('--decoder-num-layers', type=int, default=4, help='Decoder RNN number of layers.')
+    decoder_args.add_argument('--decoder-rnn-dropout', type=float, default=0.0, help='Decoder RNN dropout probability.')
+    decoder_args.add_argument('--luong-attn-hidden-size', type=int, default=1000,
                               help='Luong decoder attention hidden projection size')
     decoder_args.add_argument('--luong-input-feed', action='store_true',
                               help='Whether Luong decoder should use input feeding approach.')
@@ -83,26 +100,22 @@ def parse_args():
     attention_args = parser.add_argument_group('Attention', 'Attention hyperparameters.')
     attention_args.add_argument('--attention-type', choices=['none', 'global', 'local-m', 'local-p'], default='global',
                                 help='Attention type.')
-    attention_args.add_argument('--attention-score', choices=['dot', 'general', 'concat'], default='dot',
+    attention_args.add_argument('--attention-score', choices=['dot', 'general', 'concat', 'location'], default='dot',
                                 help='Attention score function type.')
-    attention_args.add_argument('--half-window-size', type=int, default=5,
+    # [Paper] Window size D=10
+    attention_args.add_argument('--half-window-size', type=int, default=10,
                                 help='D parameter from Luong et al. paper. Used only for local attention.')
-    attention_args.add_argument('--local-p-hidden-size', type=int, default=128,
+    attention_args.add_argument('--local-p-hidden-size', type=int, default=1000,
                                 help='Local-p attention hidden size (used when predicting window position).')
-    attention_args.add_argument('--concat-attention-hidden-size', type=int, default=128,
+    attention_args.add_argument('--concat-attention-hidden-size', type=int, default=1000,
                                 help='Attention layer hidden size. Used only with concat score function.')
 
     args = parser.parse_args()
 
-    # if none of embeddings options where given default to pre-trained glove embeddings
+    # [Note] Embeddings logic preserved but likely not used if training from scratch with vocab 50k
     if not args.embedding_type and not args.embedding_size:
-        args.embedding_type = 'glove.twitter.27B.25d'
+        args.embedding_size = 1000 # Paper default
 
-    # if embedding_size is not used, set proper pre-trained embedding size
-    if not args.embedding_size:
-        args.embedding_size = embedding_size_from_name(args.embedding_type)
-
-    # add timestamp to save_path
     args.save_path += os.path.sep + datetime.now().strftime("%Y-%m-%d-%H:%M")
 
     print(args)
@@ -110,49 +123,50 @@ def parse_args():
 
 
 def evaluate(model, val_iter, metadata):
-    model.eval()  # put models in eval mode (this is important because of dropout)
-
+    model.eval()
     total_loss = 0
     with torch.no_grad():
         for batch in val_iter:
-            # calculate models predictions
             question, answer = batch.question, batch.answer
             logits = model(question, answer)
-
-            # calculate batch loss
             loss = F.cross_entropy(logits.view(-1, metadata.vocab_size), answer[1:].view(-1),
-                                   ignore_index=metadata.padding_idx)  # answer[1:] skip <sos> token
+                                   ignore_index=metadata.padding_idx)
             total_loss += loss.item()
-
     return total_loss / len(val_iter)
 
 
 def train(model, optimizer, train_iter, metadata, grad_clip):
-    model.train()  # put models in train mode (this is important because of dropout)
-
+    model.train()
     total_loss = 0
     for batch in train_iter:
-        # calculate models predictions
         question, answer = batch.question, batch.answer
         logits = model(question, answer)
 
-        # zero gradients
         optimizer.zero_grad()
-
-        # calculate loss and backpropagate errors
         loss = F.cross_entropy(logits.view(-1, metadata.vocab_size), answer[1:].view(-1),
-                               ignore_index=metadata.padding_idx)  # answer[1:] skip <sos> token
+                               ignore_index=metadata.padding_idx)
         loss.backward()
 
         total_loss += loss.item()
-
-        # clip gradients to avoid exploding gradient
         clip_grad_norm_(model.parameters(), grad_clip)
-
-        # update parameters
         optimizer.step()
 
     return total_loss / len(train_iter)
+
+
+def adjust_learning_rate(optimizer, epoch, decay_start):
+    """
+    [New] Halve learning rate every epoch after decay_start epoch.
+    Corresponds to Paper Section 4.1.
+    """
+    if epoch >= decay_start:
+        for param_group in optimizer.param_groups:
+            # param_group['lr'] = param_group['lr'] * 0.5 # This would compound 0.5 every time called
+            # Since this function is called once per epoch loop, simple multiplication is fine.
+            # However, safer way is to check if we just crossed the boundary or do it incrementally.
+            # Given the loop structure below, we can just multiply by 0.5 at the start of qualifying epochs.
+            param_group['lr'] *= 0.5
+            print(f"Decaying learning rate to {param_group['lr']}")
 
 
 def main():
@@ -173,28 +187,39 @@ def main():
 
     model = train_model_factory(args, metadata)
     if cuda and args.multi_gpu:
-        model = nn.DataParallel(model, dim=1)  # if we were using batch_first we'd have to use dim=0
-    print(model)  # print models summary
+        model = nn.DataParallel(model, dim=1)
+    
+    # [Check] Initialization is handled inside model.py -> util.init_weights
+    print(model)
 
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, amsgrad=True)
+    # [Revised] Optimizer: SGD as per paper
+    optimizer = optim.SGD(model.parameters(), lr=args.learning_rate)
 
     try:
         best_val_loss = None
         for epoch in range(args.max_epochs):
             start = datetime.now()
-            # calculate train and val loss
+            
+            # [Revised] LR Scheduling
+            # 논문: "after 5 epochs, we begin to halve the learning rate every epoch"
+            # epoch is 0-indexed here. 
+            # If decay_start=5, it means after epoch 4 (0,1,2,3,4 finished). 
+            # So if epoch >= 5, we decay.
+            if epoch >= args.lr_decay_start:
+                adjust_learning_rate(optimizer, epoch, args.lr_decay_start)
+
             train_loss = train(model, optimizer, train_iter, metadata, args.gradient_clip)
             val_loss = evaluate(model, val_iter, metadata)
             print("[Epoch=%d/%d] train_loss %f - val_loss %f time=%s " %
                   (epoch + 1, args.max_epochs, train_loss, val_loss, datetime.now() - start), end='')
 
-            # save models if models achieved best val loss (or save every epoch is selected)
             if args.save_every_epoch or not best_val_loss or val_loss < best_val_loss:
                 print('(Saving model...', end='')
                 save_model(args.save_path, model, epoch + 1, train_loss, val_loss)
                 print('Done)', end='')
                 best_val_loss = val_loss
             print()
+            
     except (KeyboardInterrupt, BrokenPipeError):
         print('[Ctrl-C] Training stopped.')
 
