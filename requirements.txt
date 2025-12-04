@@ -1,10 +1,16 @@
-emoji==0.5.1
-pandas==0.23.4
-tweet-preprocessor==0.5.0
-scikit_learn==0.20.0
-spacy==2.0.16
-spacy_cld==0.1.0
-torch==0.4.1
-torchtext==0.3.1
-msgpack==0.5.6
+#emoji==0.5.1
+#pandas==0.23.4
+#tweet-preprocessor==0.5.0
+#scikit_learn==0.20.0
+#spacy==2.0.16
+#spacy_cld==0.1.0
+#torch==0.4.1
+#torchtext==0.3.1
+#msgpack==0.5.6
+
+# Core dependencies 
+torch>=1.9.0 
+datasets>=2.0.0 
+sentencepiece>=0.1.96 
+sacrebleu>=2.0.0
 tqdm
