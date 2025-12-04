@@ -26,6 +26,8 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1.0)
     parser.add_argument("--lr_decay_start", type=int, default=5)
     parser.add_argument("--beam_size", type=int, default=10)
+    parser.add_argument("--eval_beam_size", type=int, default=1,
+                        help="Beam size used for evaluation (BLEU). Defaults to 1 to speed up evaluation.")
     parser.add_argument("--max_len", type=int, default=100)
     parser.add_argument("--save_dir", type=str, default="checkpoints")
     parser.add_argument("--train_5000lines", action="store_true", default=False,
@@ -126,7 +128,7 @@ def main():
             bos_idx=args.bos_idx,
             eos_idx=args.eos_idx,
             unk_idx=args.unk_idx,
-            beam_size=args.beam_size,
+            beam_size=args.eval_beam_size,
             max_len=args.max_len,
             device=device,
         )
