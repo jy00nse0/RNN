@@ -147,7 +147,6 @@ class SimpleEncoder(Encoder):
                     outputs = self.dropout_layer(outputs)
             
             # Concatenate hidden states from all layers
-            import torch
             h_n = torch.cat(hidden_states, dim=0)
             return outputs, h_n
         else:
