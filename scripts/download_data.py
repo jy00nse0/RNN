@@ -57,7 +57,7 @@ def download_wmt14():
     os.makedirs(out_dir, exist_ok=True)
 
     print("Loading WMT14 en-de dataset from Hugging Face...")
-    dataset = load_dataset("wmt14", "de-en", trust_remote_code=True)
+    dataset = load_dataset("wmt14", "de-en")
     
     train_data = dataset['train']
     valid_data = dataset['validation']
@@ -94,7 +94,7 @@ def download_wmt15():
     os.makedirs(out_dir, exist_ok=True)
 
     print("\nLoading WMT15 de-en dataset from Hugging Face...")
-    dataset = load_dataset("wmt15", "de-en", trust_remote_code=True)
+    dataset = load_dataset("wmt15", "de-en")
     
     train_data = dataset['train']
     valid_data = dataset['validation']
