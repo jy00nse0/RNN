@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import subprocess
+import shutil
 import torch
 
 ###############################################################################
@@ -49,10 +50,10 @@ def make_sample_dataset(num_lines=100000):
             fout.write(line)
 
     # Validation / Test set은 원본 그대로 복사
-    os.system(f"cp {VAL_SRC} {SAMPLE_DATA_DIR}/valid.en")
-    os.system(f"cp {VAL_TGT} {SAMPLE_DATA_DIR}/valid.de")
-    os.system(f"cp {TEST_SRC} {SAMPLE_DATA_DIR}/test.en")
-    os.system(f"cp {TEST_TGT} {SAMPLE_DATA_DIR}/test.de")
+    shutil.copy(VAL_SRC, os.path.join(SAMPLE_DATA_DIR, "valid.en"))
+    shutil.copy(VAL_TGT, os.path.join(SAMPLE_DATA_DIR, "valid.de"))
+    shutil.copy(TEST_SRC, os.path.join(SAMPLE_DATA_DIR, "test.en"))
+    shutil.copy(TEST_TGT, os.path.join(SAMPLE_DATA_DIR, "test.de"))
 
     print("[+] Sample dataset created successfully.")
 
@@ -90,15 +91,40 @@ def run_sample_training():
 ###############################################################################
 # 4. BLEU Evaluation
 ###############################################################################
+def get_latest_model_dir(base_path):
+    """
+    Find the most recent timestamped subdirectory under base_path.
+    train.py creates directories with format YYYY-MM-DD-HH:MM
+    Note: This format contains colons which may not work on Windows filesystems.
+    """
+    if not os.path.exists(base_path):
+        raise FileNotFoundError(f"Base path not found: {base_path}")
+    
+    subdirs = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
+    
+    if not subdirs:
+        raise FileNotFoundError(f"No subdirectories found in {base_path}")
+    
+    # Sort by name (timestamp format naturally sorts correctly)
+    subdirs.sort(reverse=True)
+    latest_dir = os.path.join(base_path, subdirs[0])
+    
+    return latest_dir
+
+
 def run_sample_evaluation():
     print("\n======================= SAMPLE EVAL START =======================")
 
-    save_path = "checkpoints/sample_test"
+    save_path_base = "checkpoints/sample_test"
     ref_path = "data/sample100k/test.de"
+    
+    # Detect the most recent timestamped subdirectory
+    model_path = get_latest_model_dir(save_path_base)
+    print(f"Using model from: {model_path}")
 
     cmd = (
         f"python calculate_bleu.py "
-        f"--model-path {save_path} "
+        f"--model-path {model_path} "
         f"--reference-path {ref_path} "
         f"--epoch 1 "
         f"--cuda"
