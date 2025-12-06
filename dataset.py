@@ -9,10 +9,15 @@ def dataset_factory(args, device):
     [Revised] WMT14/15 데이터셋 로더
     - args.dataset이 'base'를 포함하면 정방향(Forward) 데이터 사용
     - args.dataset이 'deen'을 포함하면 De->En 방향으로 확장자(.de, .en) 교체
+    - args.dataset이 'wmt15'를 포함하면 WMT15 데이터셋 경로 사용
     """
     print(f"Loading WMT data for {args.dataset}...")
 
-    root_dir = 'data/wmt14_vocab50k/base'
+    # Determine dataset version (WMT14 or WMT15)
+    if 'wmt15' in args.dataset.lower():
+        root_dir = 'data/wmt15_vocab50k/base'
+    else:
+        root_dir = 'data/wmt14_vocab50k/base'
     
     # 1. Base(Forward) vs Reversed(Backward Source) 결정
     # T1_Base 등 'reverse': False인 실험은 'wmt14-base' 등의 이름을 사용해야 함

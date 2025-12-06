@@ -305,8 +305,10 @@ def main():
         is_deen = 'deen' in config['dataset']
         tgt_ext = 'en' if is_deen else 'de'
         
-        # Reference file path: data/wmt14_vocab50k/base/test.{de|en}
-        ref_file = f"data/wmt14_vocab50k/base/test.{tgt_ext}"
+        # Reference file path: data/wmt14_vocab50k/base/test.{de|en} or data/wmt15_vocab50k/base/test.{de|en}
+        is_wmt15 = 'wmt15' in config['dataset'].lower()
+        dataset_name = 'wmt15' if is_wmt15 else 'wmt14'
+        ref_file = f"data/{dataset_name}_vocab50k/base/test.{tgt_ext}"
         
         # 평가 로그 파일
         eval_log_file = os.path.join(save_path, "eval.log")
