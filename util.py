@@ -20,16 +20,16 @@ class RNNWrapper(nn.Module):
     LSTM = 'LSTM'
     GRU = 'GRU'
     def __init__(self, rnn):
-            super(RNNWrapper, self).__init__()
-            assert isinstance(rnn, nn.LSTM) or isinstance(rnn, nn.GRU)
-            self.rnn_type = self.LSTM if isinstance(rnn, nn.LSTM) else self.GRU
-            self.rnn = rnn
+        super(RNNWrapper, self).__init__()
+        assert isinstance(rnn, nn.LSTM) or isinstance(rnn, nn.GRU)
+        self.rnn_type = self.LSTM if isinstance(rnn, nn.LSTM) else self.GRU
+        self.rnn = rnn
     
-        def forward(self, *input):
-            rnn_out, hidden = self.rnn(*input)
-            if self.rnn_type == self.LSTM:
-                hidden, s = hidden  # ignore LSTM cell state s
-            return rnn_out, hidden
+    def forward(self, *input):
+        rnn_out, hidden = self.rnn(*input)
+        if self.rnn_type == self.LSTM:
+            hidden, s = hidden  # ignore LSTM cell state s
+        return rnn_out, hidden
     
 # Metadata used to describe dataset
 Metadata = collections.namedtuple('Metadata', 'vocab_size padding_idx vectors')
