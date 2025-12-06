@@ -238,13 +238,34 @@ class BahdanauDecoder(Decoder):
 
         self._hidden_size = rnn_hidden_size
         self._num_layers = num_layers
+        self._dropout = dropout
 
         self.initial_hidden = init_hidden
         self.embed = embed
-        self.rnn = rnn_cls(input_size=embed_size + encoder_hidden_size,
+        
+        # [Paper Reproduction] Zaremba-style dropout:
+        # - NO recurrent dropout (dropout=0 in LSTM)
+        # - Manual dropout applied between LSTM layers only
+        if num_layers > 1:
+            self.dropout_layer = nn.Dropout(dropout)
+            self.rnn_layers = nn.ModuleList()
+            for i in range(num_layers):
+                layer_input_size = embed_size + encoder_hidden_size if i == 0 else rnn_hidden_size
+                self.rnn_layers.append(
+                    rnn_cls(input_size=layer_input_size,
                            hidden_size=rnn_hidden_size,
-                           num_layers=num_layers,
-                           dropout=dropout)
+                           num_layers=1,
+                           dropout=0)  # NO dropout inside LSTM
+                )
+            self.rnn = None
+        else:
+            self.rnn = rnn_cls(input_size=embed_size + encoder_hidden_size,
+                              hidden_size=rnn_hidden_size,
+                              num_layers=num_layers,
+                              dropout=0)  # NO dropout even for single layer
+            self.rnn_layers = None
+            self.dropout_layer = None
+            
         self.attn = attn
         self.out = nn.Linear(in_features=rnn_hidden_size // 2, out_features=vocab_size)
 
@@ -272,10 +293,54 @@ class BahdanauDecoder(Decoder):
         rnn_input = rnn_input.unsqueeze(0)  # (batch, embed + enc_h) -> (1, batch, embed + enc_h)
 
         # calculate rnn output
-        _, state = self.rnn(rnn_input, last_state)
-
-        # if RNN is LSTM state is tuple
-        hidden = state[0] if isinstance(state, tuple) else state
+        if self.rnn_layers is not None:
+            # Multi-layer with manual dropout between layers
+            layer_input = rnn_input
+            hidden_states = []
+            cell_states = [] if isinstance(last_state, tuple) else None
+            
+            for i, rnn_layer in enumerate(self.rnn_layers):
+                # Get initial state for this layer
+                if isinstance(last_state, tuple):
+                    # LSTM: (hidden, cell)
+                    layer_h = last_state[0][i:i+1]
+                    layer_c = last_state[1][i:i+1]
+                    layer_state = (layer_h, layer_c)
+                else:
+                    # GRU: just hidden
+                    layer_state = last_state[i:i+1]
+                
+                # Apply RNN layer
+                _, new_state = rnn_layer(layer_input, layer_state)
+                
+                # Extract hidden and cell states
+                if isinstance(new_state, tuple):
+                    hidden_states.append(new_state[0])
+                    cell_states.append(new_state[1])
+                    layer_output = new_state[0]
+                else:
+                    hidden_states.append(new_state)
+                    layer_output = new_state
+                
+                # Apply dropout between layers (not after the last layer)
+                if i < len(self.rnn_layers) - 1:
+                    layer_input = self.dropout_layer(layer_output)
+                else:
+                    layer_input = layer_output
+            
+            # Concatenate states from all layers
+            if cell_states is not None:
+                hidden = torch.cat(hidden_states, dim=0)
+                cell = torch.cat(cell_states, dim=0)
+                state = (hidden, cell)
+            else:
+                state = torch.cat(hidden_states, dim=0)
+                hidden = state
+        else:
+            # Single layer: no dropout
+            _, state = self.rnn(rnn_input, last_state)
+            # if RNN is LSTM state is tuple
+            hidden = state[0] if isinstance(state, tuple) else state
 
         # maxout layer (with k=2)
         top_layer_hidden = hidden[-1]  # (batch, rnn_hidden)
@@ -350,6 +415,7 @@ class LuongDecoder(Decoder):
 
         self._hidden_size = rnn_hidden_size
         self._num_layers = num_layers
+        self._dropout = dropout
         self.initial_hidden = init_hidden
 
         self.input_feed = input_feed
@@ -357,10 +423,30 @@ class LuongDecoder(Decoder):
 
         rnn_input_size = embed_size + (attn_hidden_projection_size if input_feed else 0)
         self.embed = embed
-        self.rnn = rnn_cls(input_size=rnn_input_size,
+        
+        # [Paper Reproduction] Zaremba-style dropout:
+        # - NO recurrent dropout (dropout=0 in LSTM)
+        # - Manual dropout applied between LSTM layers only
+        if num_layers > 1:
+            self.dropout_layer = nn.Dropout(dropout)
+            self.rnn_layers = nn.ModuleList()
+            for i in range(num_layers):
+                layer_input_size = rnn_input_size if i == 0 else rnn_hidden_size
+                self.rnn_layers.append(
+                    rnn_cls(input_size=layer_input_size,
                            hidden_size=rnn_hidden_size,
-                           num_layers=num_layers,
-                           dropout=dropout)
+                           num_layers=1,
+                           dropout=0)  # NO dropout inside LSTM
+                )
+            self.rnn = None
+        else:
+            self.rnn = rnn_cls(input_size=rnn_input_size,
+                              hidden_size=rnn_hidden_size,
+                              num_layers=num_layers,
+                              dropout=0)  # NO dropout even for single layer
+            self.rnn_layers = None
+            self.dropout_layer = None
+            
         self.attn = attn
         self.attn_hidden_lin = nn.Linear(in_features=rnn_hidden_size + encoder_hidden_size,
                                          out_features=attn_hidden_projection_size)
@@ -393,10 +479,54 @@ class LuongDecoder(Decoder):
         rnn_input = rnn_input.unsqueeze(0)  # (batch, rnn_input_size) -> (1, batch, rnn_input_size)
 
         # rnn output
-        _, state = self.rnn(rnn_input, last_state)
-
-        # if RNN is LSTM state is tuple
-        hidden = state[0] if isinstance(state, tuple) else state
+        if self.rnn_layers is not None:
+            # Multi-layer with manual dropout between layers
+            layer_input = rnn_input
+            hidden_states = []
+            cell_states = [] if isinstance(last_state, tuple) else None
+            
+            for i, rnn_layer in enumerate(self.rnn_layers):
+                # Get initial state for this layer
+                if isinstance(last_state, tuple):
+                    # LSTM: (hidden, cell)
+                    layer_h = last_state[0][i:i+1]
+                    layer_c = last_state[1][i:i+1]
+                    layer_state = (layer_h, layer_c)
+                else:
+                    # GRU: just hidden
+                    layer_state = last_state[i:i+1]
+                
+                # Apply RNN layer
+                _, new_state = rnn_layer(layer_input, layer_state)
+                
+                # Extract hidden and cell states
+                if isinstance(new_state, tuple):
+                    hidden_states.append(new_state[0])
+                    cell_states.append(new_state[1])
+                    layer_output = new_state[0]
+                else:
+                    hidden_states.append(new_state)
+                    layer_output = new_state
+                
+                # Apply dropout between layers (not after the last layer)
+                if i < len(self.rnn_layers) - 1:
+                    layer_input = self.dropout_layer(layer_output)
+                else:
+                    layer_input = layer_output
+            
+            # Concatenate states from all layers
+            if cell_states is not None:
+                hidden = torch.cat(hidden_states, dim=0)
+                cell = torch.cat(cell_states, dim=0)
+                state = (hidden, cell)
+            else:
+                state = torch.cat(hidden_states, dim=0)
+                hidden = state
+        else:
+            # Single layer: no dropout
+            _, state = self.rnn(rnn_input, last_state)
+            # if RNN is LSTM state is tuple
+            hidden = state[0] if isinstance(state, tuple) else state
 
         # attention context
         attn_weights, context = self.attn(t, hidden[-1], encoder_outputs)

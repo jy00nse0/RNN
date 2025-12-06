@@ -48,7 +48,7 @@ def parse_args():
                                               'twitter-spotifycares', 'twitter-uber_support', 'twitter-all',
                                               'twitter-small'],
                         help='Dataset for training model.')
-    parser.add_argument('--teacher-forcing-ratio', type=float, default=0.5,
+    parser.add_argument('--teacher-forcing-ratio', type=float, default=1.0,
                         help='Teacher forcing ratio used in seq2seq models. [0-1]')
    # [Paper] Experimental Setup
     parser.add_argument('--reverse', action='store_true', 
@@ -214,8 +214,9 @@ def adjust_learning_rate(optimizer, epoch, decay_start):
     """
     [New] Halve learning rate every epoch after decay_start epoch.
     Corresponds to Paper Section 4.1.
+    Paper says "after N epochs" which means starting from epoch N+1 (0-indexed: epoch > N)
     """
-    if epoch >= decay_start:
+    if epoch > decay_start:
         for param_group in optimizer.param_groups:
             # param_group['lr'] = param_group['lr'] * 0.5 # This would compound 0.5 every time called
             # Since this function is called once per epoch loop, simple multiplication is fine.
@@ -259,13 +260,13 @@ def main():
             # [Revised] LR Scheduling
             # 논문: "after 5 epochs, we begin to halve the learning rate every epoch"
             # epoch is 0-indexed here. 
-            # If decay_start=5, it means after epoch 4 (0,1,2,3,4 finished). 
-            # So if epoch >= 5, we decay.
-            if epoch >= args.lr_decay_start:
+            # If decay_start=5, it means after epoch 5 (epochs 0,1,2,3,4,5 finished). 
+            # So if epoch > 5, we decay (starting from epoch 6).
+            if epoch > args.lr_decay_start:
                 adjust_learning_rate(optimizer, epoch, args.lr_decay_start)
 
-            train_loss = train(model, optimizer, train_iter, metadata, args.gradient_clip)
-            val_loss = evaluate(model, val_iter, metadata)
+            train_loss = train(model, optimizer, train_iter, metadata, args.gradient_clip, reverse_src=args.reverse)
+            val_loss = evaluate(model, val_iter, metadata, reverse_src=args.reverse)
             print("[Epoch=%d/%d] train_loss %f - val_loss %f time=%s " %
                   (epoch + 1, args.max_epochs, train_loss, val_loss, datetime.now() - start), end='')
 
@@ -279,7 +280,7 @@ def main():
     except (KeyboardInterrupt, BrokenPipeError):
         print('[Ctrl-C] Training stopped.')
 
-    test_loss = evaluate(model, test_iter, metadata)
+    test_loss = evaluate(model, test_iter, metadata, reverse_src=args.reverse)
     print("Test loss %f" % test_loss)
 
 
