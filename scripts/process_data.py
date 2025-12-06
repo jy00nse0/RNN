@@ -74,6 +74,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--raw_dir', type=str, default='data/wmt14_raw', help='Input directory with raw forward files')
     parser.add_argument('--out_dir', type=str, default='data/wmt14_vocab50k', help='Output directory')
+    parser.add_argument('--src_lang', type=str, default='en', help='Source language code (en or de)')
+    parser.add_argument('--tgt_lang', type=str, default='de', help='Target language code (en or de)')
     args = parser.parse_args()
 
     # 경로 설정
@@ -83,11 +85,11 @@ def main():
     os.makedirs(base_dir, exist_ok=True)
     os.makedirs(rev_dir, exist_ok=True)
 
-    # 파일명 정의
+    # 파일명 정의 (언어 방향에 따라 동적으로 결정)
     files = {
-        'train': ('train.clean.en', 'train.clean.de'),
-        'valid': ('valid.clean.en', 'valid.clean.de'),
-        'test':  ('test.clean.en', 'test.clean.de')
+        'train': (f'train.clean.{args.src_lang}', f'train.clean.{args.tgt_lang}'),
+        'valid': (f'valid.clean.{args.src_lang}', f'valid.clean.{args.tgt_lang}'),
+        'test':  (f'test.clean.{args.src_lang}', f'test.clean.{args.tgt_lang}')
     }
 
     # 1. Vocab 구축 (Train 데이터 기준)
@@ -104,8 +106,8 @@ def main():
         # Source Files Process
         process_and_save_dual(
             in_path=os.path.join(args.raw_dir, src_file),
-            out_path_base=os.path.join(base_dir, split + '.en'),
-            out_path_rev=os.path.join(rev_dir, split + '.en'),
+            out_path_base=os.path.join(base_dir, f'{split}.{args.src_lang}'),
+            out_path_rev=os.path.join(rev_dir, f'{split}.{args.src_lang}'),
             vocab=vocab_src,
             is_source=True # Source 파일은 Reverse 버전에서 뒤집힘
         )
@@ -113,8 +115,8 @@ def main():
         # Target Files Process
         process_and_save_dual(
             in_path=os.path.join(args.raw_dir, tgt_file),
-            out_path_base=os.path.join(base_dir, split + '.de'),
-            out_path_rev=os.path.join(rev_dir, split + '.de'),
+            out_path_base=os.path.join(base_dir, f'{split}.{args.tgt_lang}'),
+            out_path_rev=os.path.join(rev_dir, f'{split}.{args.tgt_lang}'),
             vocab=vocab_tgt,
             is_source=False # Target 파일은 뒤집지 않음
         )
