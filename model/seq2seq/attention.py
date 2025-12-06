@@ -18,6 +18,10 @@ def attention_factory(args):
     """
     Factory method for attention module.
     """
+    # Handle "none" attention type
+    if args.attention_type == 'none':
+        return None
+    
     # Location score requires max_seq_len to define weight matrix size.
     # Defaulting to 50 (paper limit) if not specified in args.
     max_len = getattr(args, 'max_seq_len', 50) 
