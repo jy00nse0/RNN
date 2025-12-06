@@ -59,7 +59,8 @@ def parse_args():
     gpu_args.add_argument('--multi-gpu', action='store_true', default=False, help='Use multiple GPUs if available.')
 
     # embeddings hyperparameters
-    embeddings = parser.add_mutually_exclusive_group()
+    # embeddings = parser.add_mutually_exclusive_group()  # Empty group commented out to prevent argparse error
+    parser.add_argument('--embedding-size', type=int, default=None, help='Embedding size.')
     # Model Hyperparameters
     encoder_args = parser.add_argument_group('Encoder', 'Encoder hyperparameters.')
 
