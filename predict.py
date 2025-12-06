@@ -73,6 +73,7 @@ def main():
     print('Vocab loaded.')
 
     cuda = torch.cuda.is_available() and args.cuda
+    device = torch.device('cuda' if cuda else 'cpu')
     
     # Set seeds for reproducibility
     torch.manual_seed(42)
@@ -87,6 +88,7 @@ def main():
 
     model = ModelDecorator(
         predict_model_factory(model_args, metadata, get_model_path(args.model_path + os.path.sep, args.epoch), field))
+    model = model.to(device)
     print('model loaded')
     model.eval()
 

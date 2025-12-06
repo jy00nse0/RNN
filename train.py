@@ -248,6 +248,7 @@ def main():
     print('Done')
 
     model = train_model_factory(args, metadata)
+    model = model.to(device)
     if cuda and args.multi_gpu:
         model = nn.DataParallel(model, dim=1)
     

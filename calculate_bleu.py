@@ -90,6 +90,7 @@ def main():
     vocab = load_object(args.model_path + os.path.sep + 'vocab')
 
     cuda = torch.cuda.is_available() and args.cuda
+    device = torch.device('cuda' if cuda else 'cpu')
     
     # Set seeds for reproducibility
     torch.manual_seed(42)
@@ -101,6 +102,7 @@ def main():
     metadata = metadata_factory(model_args, vocab)
 
     model = predict_model_factory(model_args, metadata, get_model_path(args.model_path + os.path.sep, args.epoch), field)
+    model = model.to(device)
     model.eval()
 
     # Read reference file - it's actually just a text file with one sentence per line
