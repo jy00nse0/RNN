@@ -39,6 +39,7 @@ def parse_args():
     
     parser.add_argument('--train-embeddings', action='store_true',
                         help='Should gradients be propagated to word embeddings.')
+    parser.add_argument('--embedding-type', type=str, default=None)
     parser.add_argument('--save-path', default='.save',
                         help='Folder where models (and other configs) will be saved during training.')
     parser.add_argument('--save-every-epoch', action='store_true',
@@ -49,7 +50,9 @@ def parse_args():
                         help='Dataset for training model.')
     parser.add_argument('--teacher-forcing-ratio', type=float, default=0.5,
                         help='Teacher forcing ratio used in seq2seq models. [0-1]')
-
+   # [Paper] Experimental Setup
+    parser.add_argument('--reverse', action='store_true', 
+                        help='[Experiment] Reverse source sequence (excluding special tokens) for LSTM inputs.')
     # cuda
     gpu_args = parser.add_argument_group('GPU', 'GPU related settings.')
     gpu_args.add_argument('--cuda', action='store_true', default=False, help='Use cuda if available.')
@@ -57,22 +60,9 @@ def parse_args():
 
     # embeddings hyperparameters
     embeddings = parser.add_mutually_exclusive_group()
-    embeddings.add_argument('--embedding-type', type=str,
-                            choices=['glove.42B.300d',
-                                     'glove.840B.300d',
-                                     'glove.twitter.27B.25d',
-                                     'glove.twitter.27B.50d',
-                                     'glove.twitter.27B.100d',
-                                     'glove.twitter.27B.200d',
-                                     'glove.6B.50d',
-                                     'glove.6B.100d',
-                                     'glove.6B.200d',
-                                     'glove.6B.300d'],
-                            help='Pre-trained embeddings type.')
-    embeddings.add_argument('--embedding-size', type=int, help='Dimensionality of word embeddings.')
-
-    # encoder hyperparameters
+    # Model Hyperparameters
     encoder_args = parser.add_argument_group('Encoder', 'Encoder hyperparameters.')
+
     encoder_args.add_argument('--encoder-rnn-cell', choices=['LSTM', 'GRU'], default='LSTM',
                               help='Encoder RNN cell type.')
     encoder_args.add_argument('--encoder-hidden-size', type=int, default=1000, help='Encoder RNN hidden size.')
@@ -121,13 +111,43 @@ def parse_args():
     print(args)
     return args
 
+def batch_reverse_source(src_tensor, pad_idx):
+    """
+    [New] 소스 텐서를 뒤집는 함수 (Memory-efficient in-place flip attempt or clone)
+    Input: (seq_len, batch)
+    Assumes structure: <sos> w1 w2 ... wn <eos> <pad> ...
+    Target: <sos> wn ... w2 w1 <eos> <pad> ...
+    """
+    # Clone to avoid modifying original data if needed, or modify in place
+    rev_src = src_tensor.clone()
+    seq_len, batch_size = src_tensor.size()
 
-def evaluate(model, val_iter, metadata):
+    for b in range(batch_size):
+        # Find length of current sequence (excluding padding)
+        # Assuming padding is at the end.
+        non_pad_mask = (src_tensor[:, b] != pad_idx)
+        valid_len = non_pad_mask.sum().item()
+        
+        if valid_len <= 2: # Only <sos> and <eos> or empty
+            continue
+            
+        # Indices to reverse: from 1 to valid_len-2 (inclusive)
+        # Index 0 is <sos>, Index valid_len-1 is <eos>
+        # Reverse the content: src[1 : valid_len-1]
+        content = src_tensor[1 : valid_len-1, b]
+        rev_src[1 : valid_len-1, b] = torch.flip(content, dims=[0])
+        
+    return rev_src
+   
+def evaluate(model, val_iter, metadata,reverse_src=False):
     model.eval()
     total_loss = 0
     with torch.no_grad():
         for batch in val_iter:
             question, answer = batch.question, batch.answer
+            # [Feature] Reverse Source if flag is set
+            if reverse_src:
+                question = batch_reverse_source(question, metadata.padding_idx)
             logits = model(question, answer)
             loss = F.cross_entropy(logits.view(-1, metadata.vocab_size), answer[1:].view(-1),
                                    ignore_index=metadata.padding_idx)
@@ -135,11 +155,14 @@ def evaluate(model, val_iter, metadata):
     return total_loss / len(val_iter)
 
 
-def train(model, optimizer, train_iter, metadata, grad_clip):
+def train(model, optimizer, train_iter, metadata, grad_clip,reverse_src=False):
     model.train()
     total_loss = 0
     for batch in train_iter:
         question, answer = batch.question, batch.answer
+        # [Feature] Reverse Source if flag is set
+        if reverse_src:
+            question = batch_reverse_source(question, metadata.padding_idx)
         logits = model(question, answer)
 
         optimizer.zero_grad()
