@@ -4,7 +4,7 @@ import torch
 import pandas as pd
 import os
 import argparse
-import subprocess
+import sacrebleu
 from model import predict_model_factory
 from dataset import field_factory, metadata_factory
 from serialization import load_object
@@ -68,19 +68,10 @@ def main():
     model.eval()
 
     ref = pd.read_csv(args.reference_path, sep='\t')
-    ref_answers = list(map(lambda x: x.lower(), ref['answer'].tolist()))
+    ref_answers = ref['answer'].tolist()
     answers = get_answers(model, ref['question'].tolist(), args)
 
-    with open('answers.txt', 'w') as fd:
-        fd.write('\n'.join(answers))
-
-    with open('reference.txt', 'w') as fd:
-        fd.write('\n'.join(ref_answers))
-
-    answers_file = open('answers.txt')
-    bleu = subprocess.check_output("perl tools/multi-bleu.perl reference.txt", stdin=answers_file, shell=True)\
-        .decode('utf-8').strip()
-    answers_file.close()
+    bleu = sacrebleu.corpus_bleu(answers, [ref_answers])
 
     print(bleu)
 
