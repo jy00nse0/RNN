@@ -73,7 +73,12 @@ def main():
     print('Vocab loaded.')
 
     cuda = torch.cuda.is_available() and args.cuda
-    torch.set_default_tensor_type(torch.cuda.FloatTensor if cuda else torch.FloatTensor)
+    
+    # Set seeds for reproducibility
+    torch.manual_seed(42)
+    if cuda:
+        torch.cuda.manual_seed_all(42)
+    
     print("Using %s for inference" % ('GPU' if cuda else 'CPU'))
 
     field = field_factory(model_args)

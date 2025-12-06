@@ -90,7 +90,11 @@ def main():
     vocab = load_object(args.model_path + os.path.sep + 'vocab')
 
     cuda = torch.cuda.is_available() and args.cuda
-    torch.set_default_tensor_type(torch.cuda.FloatTensor if cuda else torch.FloatTensor)
+    
+    # Set seeds for reproducibility
+    torch.manual_seed(42)
+    if cuda:
+        torch.cuda.manual_seed_all(42)
 
     # Create a simple field wrapper for vocab
     field = SimpleField(vocab)
