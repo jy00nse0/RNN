@@ -115,7 +115,7 @@ def run_sample_training():
         f"--decoder-num-layers 2 "
         f"--attention-type none "
         f"--reverse "
-        f"--teacher-forcing-ratio 1.0"
+        f"--teacher-forcing-ratio 1.0 "
         f"{cuda_flag}"
     )
 

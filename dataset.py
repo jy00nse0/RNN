@@ -165,7 +165,7 @@ def dataset_factory(args, device):
     
     metadata = Metadata(vocab_size=len(train_dataset.tgt_vocab), padding_idx=pad_idx, vectors=None)
     
-    return metadata, train_dataset.tgt_vocab, BatchWrapper(train_iter), BatchWrapper(val_iter), BatchWrapper(test_iter)
+    return metadata, train_dataset.tgt_vocab, BatchWrapper(train_iter, device), BatchWrapper(val_iter, device), BatchWrapper(test_iter, device)
 
 class Batch:
     """Wrapper for batch data"""

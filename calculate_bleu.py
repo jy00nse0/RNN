@@ -104,17 +104,18 @@ def main():
     with open(args.reference_path, 'r', encoding='utf-8') as f:
         ref_answers = [line.strip() for line in f]
     
-    # For translation, we need source sentences. 
-    # Let's assume test source file is in the same directory
-    test_src_path = args.reference_path.replace('.de', '.en').replace('.en', '.en')  # Ensure we get source
-    if args.reference_path.endswith('.de'):
-        test_src_path = args.reference_path.replace('.de', '.en')
-    elif args.reference_path.endswith('.en'):
-        test_src_path = args.reference_path.replace('.en', '.en')  # Already source? This needs refinement
-    
-    # Actually, let's reconstruct based on the path structure
-    # For sample100k/test.de, source should be sample100k/test.en
-    test_src_path = args.reference_path.rsplit('.', 1)[0] + ('.en' if args.reference_path.endswith('.de') else '.en')
+    # Determine source file path based on reference file
+    # For .de reference (German), source is .en (English)
+    # For .en reference (English), source is .de (German) - though this is less common
+    base_path, ext = args.reference_path.rsplit('.', 1)
+    if ext == 'de':
+        # Reference is German, source is English
+        test_src_path = base_path + '.en'
+    elif ext == 'en':
+        # Reference is English, source is German (for De->En direction)
+        test_src_path = base_path + '.de'
+    else:
+        raise ValueError(f"Unknown reference file extension: {ext}")
     
     with open(test_src_path, 'r', encoding='utf-8') as f:
         questions = [line.strip() for line in f]
