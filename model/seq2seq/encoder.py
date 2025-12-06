@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from util import RNNWrapper
 from abc import ABC, abstractmethod
@@ -80,13 +81,35 @@ class SimpleEncoder(Encoder):
         self._hidden_size = hidden_size
         self._bidirectional = bidirectional
         self._num_layers = num_layers
+        self._dropout = dropout
 
         self.embed = embed
-        self.rnn = RNNWrapper(rnn_cls(input_size=embed_size,
+        # [Paper Reproduction] Zaremba-style dropout:
+        # - NO recurrent dropout (dropout=0 in LSTM)
+        # - Manual dropout applied between LSTM layers only
+        if num_layers > 1:
+            # For multi-layer setup, create individual LSTM layers and apply dropout between them
+            self.dropout_layer = nn.Dropout(dropout)
+            self.rnn_layers = nn.ModuleList()
+            for i in range(num_layers):
+                layer_input_size = embed_size if i == 0 else hidden_size * (2 if bidirectional else 1)
+                self.rnn_layers.append(
+                    RNNWrapper(rnn_cls(input_size=layer_input_size,
                                       hidden_size=hidden_size,
-                                      num_layers=num_layers,
-                                      dropout=dropout,
+                                      num_layers=1,
+                                      dropout=0,  # NO dropout inside LSTM
                                       bidirectional=bidirectional))
+                )
+            self.rnn = None  # Will not use single RNN, use rnn_layers instead
+        else:
+            # Single layer: no dropout needed
+            self.rnn = RNNWrapper(rnn_cls(input_size=embed_size,
+                                          hidden_size=hidden_size,
+                                          num_layers=num_layers,
+                                          dropout=0,  # NO dropout even for single layer
+                                          bidirectional=bidirectional))
+            self.rnn_layers = None
+            self.dropout_layer = None
 
     @property
     def hidden_size(self):
@@ -102,5 +125,32 @@ class SimpleEncoder(Encoder):
 
     def forward(self, input, h_0=None):
         embedded = self.embed(input)
-        outputs, h_n = self.rnn(embedded, h_0)
-        return outputs, h_n
+        
+        if self.rnn_layers is not None:
+            # Multi-layer with manual dropout between layers
+            outputs = embedded
+            hidden_states = []
+            
+            for i, rnn_layer in enumerate(self.rnn_layers):
+                # Get initial hidden state for this layer
+                layer_h_0 = None
+                if h_0 is not None:
+                    num_directions = 2 if self._bidirectional else 1
+                    layer_h_0 = h_0[i*num_directions:(i+1)*num_directions]
+                
+                # Apply RNN layer
+                outputs, h_n = rnn_layer(outputs, layer_h_0)
+                hidden_states.append(h_n)
+                
+                # Apply dropout between layers (not after the last layer)
+                if i < len(self.rnn_layers) - 1:
+                    outputs = self.dropout_layer(outputs)
+            
+            # Concatenate hidden states from all layers
+            import torch
+            h_n = torch.cat(hidden_states, dim=0)
+            return outputs, h_n
+        else:
+            # Single layer: no dropout
+            outputs, h_n = self.rnn(embedded, h_0)
+            return outputs, h_n
