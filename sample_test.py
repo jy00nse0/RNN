@@ -27,7 +27,11 @@ TEST_TGT = os.path.join(RAW_DATA_DIR, "test.de")
 ###############################################################################
 # 2. 샘플 데이터셋 생성
 ###############################################################################
-def make_sample_dataset(num_lines=100000):
+def make_sample_dataset(num_lines=1000):
+    """
+    Create a small sample dataset for quick testing.
+    Using 1000 lines instead of 100k for reasonable testing time.
+    """
     if not os.path.exists(SAMPLE_DATA_DIR):
         os.makedirs(SAMPLE_DATA_DIR, exist_ok=True)
 
@@ -49,11 +53,35 @@ def make_sample_dataset(num_lines=100000):
                 break
             fout.write(line)
 
-    # Validation / Test set은 원본 그대로 복사
-    shutil.copy(VAL_SRC, os.path.join(SAMPLE_DATA_DIR, "valid.en"))
-    shutil.copy(VAL_TGT, os.path.join(SAMPLE_DATA_DIR, "valid.de"))
-    shutil.copy(TEST_SRC, os.path.join(SAMPLE_DATA_DIR, "test.en"))
-    shutil.copy(TEST_TGT, os.path.join(SAMPLE_DATA_DIR, "test.de"))
+    # Validation / Test set: use smaller subsets for quick testing
+    # Using first 100 lines instead of full sets
+    with open(VAL_SRC, "r", encoding="utf-8") as fin, \
+         open(os.path.join(SAMPLE_DATA_DIR, "valid.en"), "w", encoding="utf-8") as fout:
+        for i, line in enumerate(fin):
+            if i >= 100:
+                break
+            fout.write(line)
+    
+    with open(VAL_TGT, "r", encoding="utf-8") as fin, \
+         open(os.path.join(SAMPLE_DATA_DIR, "valid.de"), "w", encoding="utf-8") as fout:
+        for i, line in enumerate(fin):
+            if i >= 100:
+                break
+            fout.write(line)
+    
+    with open(TEST_SRC, "r", encoding="utf-8") as fin, \
+         open(os.path.join(SAMPLE_DATA_DIR, "test.en"), "w", encoding="utf-8") as fout:
+        for i, line in enumerate(fin):
+            if i >= 100:
+                break
+            fout.write(line)
+    
+    with open(TEST_TGT, "r", encoding="utf-8") as fin, \
+         open(os.path.join(SAMPLE_DATA_DIR, "test.de"), "w", encoding="utf-8") as fout:
+        for i, line in enumerate(fin):
+            if i >= 100:
+                break
+            fout.write(line)
 
     print("[+] Sample dataset created successfully.")
 
@@ -66,21 +94,29 @@ def run_sample_training():
 
     save_path = "checkpoints/sample_test"
 
+    # Check if CUDA is available
+    if torch.cuda.is_available():
+        print(f"CUDA Available: {torch.cuda.get_device_name(0)}")
+        cuda_flag = " --cuda"
+    else:
+        print("CUDA NOT Available. Running on CPU")
+        cuda_flag = ""
+
     cmd = (
         f"python train.py "
         f"--dataset sample100k "
         f"--save-path {save_path} "
         f"--max-epochs 1 "
-        f"--batch-size 64 "
+        f"--batch-size 32 "
         f"--learning-rate 1.0 "
-        f"--encoder-hidden-size 1000 "
-        f"--decoder-hidden-size 1000 "
-        f"--encoder-num-layers 4 "
-        f"--decoder-num-layers 4 "
+        f"--encoder-hidden-size 256 "
+        f"--decoder-hidden-size 256 "
+        f"--encoder-num-layers 2 "
+        f"--decoder-num-layers 2 "
         f"--attention-type none "
         f"--reverse "
-        f"--teacher-forcing-ratio 1.0 "
-        f"--cuda"
+        f"--teacher-forcing-ratio 1.0"
+        f"{cuda_flag}"
     )
 
     print("[Exec]", cmd)
