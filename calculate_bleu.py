@@ -38,17 +38,49 @@ def get_answers(model, questions, args):
     num_batches = len(questions) // batch_size
     rest = len(questions) % batch_size
     for batch in range(num_batches):
-        batch_answers, _ = model(questions[batch * batch_size:(batch + 1) * batch_size],
-                                 sampling_strategy=args.sampling_strategy,
-                                 max_seq_len=args.max_seq_len)
+        batch_answers = model(questions[batch * batch_size:(batch + 1) * batch_size],
+                             sampling_strategy=args.sampling_strategy,
+                             max_seq_len=args.max_seq_len)
         answers.extend(batch_answers)
 
     if rest != 0:
-        batch_answers, _ = model(questions[-rest:], sampling_strategy=args.sampling_strategy,
-                                 max_seq_len=args.max_seq_len)
+        batch_answers = model(questions[-rest:], sampling_strategy=args.sampling_strategy,
+                             max_seq_len=args.max_seq_len)
         answers.extend(batch_answers)
 
     return answers
+
+
+class SimpleField:
+    """Simple field-like object that wraps vocab for compatibility"""
+    def __init__(self, vocab):
+        self.vocab = vocab
+    
+    def preprocess(self, text):
+        """Tokenize text by splitting on whitespace"""
+        return text.strip().split()
+    
+    def process(self, batch):
+        """Convert list of token lists to tensor"""
+        max_len = max(len(tokens) for tokens in batch)
+        # Add <sos> and <eos> tokens
+        processed = []
+        for tokens in batch:
+            indices = [self.vocab.stoi['<sos>']] + \
+                      [self.vocab.stoi.get(tok, self.vocab.stoi['<unk>']) for tok in tokens] + \
+                      [self.vocab.stoi['<eos>']]
+            processed.append(indices)
+        
+        # Pad to same length
+        pad_idx = self.vocab.stoi['<pad>']
+        max_len = max(len(seq) for seq in processed)
+        padded = []
+        for seq in processed:
+            padded.append(seq + [pad_idx] * (max_len - len(seq)))
+        
+        # Convert to tensor (seq_len, batch_size)
+        tensor = torch.tensor(padded, dtype=torch.long).t()
+        return tensor
 
 
 def main():
@@ -60,16 +92,35 @@ def main():
     cuda = torch.cuda.is_available() and args.cuda
     torch.set_default_tensor_type(torch.cuda.FloatTensor if cuda else torch.FloatTensor)
 
-    field = field_factory(model_args)
-    field.vocab = vocab
+    # Create a simple field wrapper for vocab
+    field = SimpleField(vocab)
     metadata = metadata_factory(model_args, vocab)
 
     model = predict_model_factory(model_args, metadata, get_model_path(args.model_path + os.path.sep, args.epoch), field)
     model.eval()
 
-    ref = pd.read_csv(args.reference_path, sep='\t')
-    ref_answers = ref['answer'].tolist()
-    answers = get_answers(model, ref['question'].tolist(), args)
+    # Read reference file - it's actually just a text file with one sentence per line
+    # Not a TSV with question/answer columns
+    with open(args.reference_path, 'r', encoding='utf-8') as f:
+        ref_answers = [line.strip() for line in f]
+    
+    # Determine source file path based on reference file
+    # For .de reference (German), source is .en (English)
+    # For .en reference (English), source is .de (German) - though this is less common
+    base_path, ext = args.reference_path.rsplit('.', 1)
+    if ext == 'de':
+        # Reference is German, source is English
+        test_src_path = base_path + '.en'
+    elif ext == 'en':
+        # Reference is English, source is German (for De->En direction)
+        test_src_path = base_path + '.de'
+    else:
+        raise ValueError(f"Unknown reference file extension: {ext}")
+    
+    with open(test_src_path, 'r', encoding='utf-8') as f:
+        questions = [line.strip() for line in f]
+    
+    answers = get_answers(model, questions, args)
 
     bleu = sacrebleu.corpus_bleu(answers, [ref_answers])
 

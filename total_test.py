@@ -31,7 +31,8 @@ experiments = {
     "T1_Base": {
         "dataset": "wmt14-en-de", 
         "args": {**COMMON, "max_epochs": EPOCHS_BASE, "lr_decay_start": DECAY_BASE, 
-                 "dropout": 0.0, "attention_type": "none", 
+                 "encoder_rnn_dropout": 0.0, "decoder_rnn_dropout": 0.0, 
+                 "attention_type": "none", 
                  "reverse": False}
     },
 
@@ -40,7 +41,8 @@ experiments = {
     "T1_Base_Reverse": {
         "dataset": "wmt14-en-de",
         "args": {**COMMON, "max_epochs": EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
-                 "dropout": 0.0, "attention_type": "none",
+                 "encoder_rnn_dropout": 0.0, "decoder_rnn_dropout": 0.0,
+                 "attention_type": "none",
                  "reverse": True}
     },
 
@@ -116,14 +118,16 @@ experiments = {
     "T3_Base_Reverse": {
         "dataset": "wmt15-deen", # Triggers De->En in dataset.py
         "args": {**COMMON, "max_epochs": EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
-                 "dropout": 0.0, "attention_type": "none",
+                 "encoder_rnn_dropout": 0.0, "decoder_rnn_dropout": 0.0,
+                 "attention_type": "none",
                  "reverse": True}
     },
 
     "T3_Global_Location": {
         "dataset": "wmt15-deen",
         "args": {**COMMON, "max_epochs": EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
-                 "dropout": 0.0, "attention_type": "global", "attention_score": "location",
+                 "encoder_rnn_dropout": 0.0, "decoder_rnn_dropout": 0.0,
+                 "attention_type": "global", "attention_score": "location",
                  "luong_input_feed": True,
                  "reverse": True}
     },
@@ -131,7 +135,8 @@ experiments = {
     "T3_Global_Location_Feed": {
         "dataset": "wmt15-deen",
         "args": {**COMMON, "max_epochs": EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
-                 "dropout": 0.0, "attention_type": "global", "attention_score": "location",
+                 "encoder_rnn_dropout": 0.0, "decoder_rnn_dropout": 0.0,
+                 "attention_type": "global", "attention_score": "location",
                  "luong_input_feed": True,
                  "reverse": True}
     },

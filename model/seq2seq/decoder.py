@@ -448,9 +448,15 @@ class LuongDecoder(Decoder):
             self.dropout_layer = None
             
         self.attn = attn
-        self.attn_hidden_lin = nn.Linear(in_features=rnn_hidden_size + encoder_hidden_size,
-                                         out_features=attn_hidden_projection_size)
-        self.out = nn.Linear(in_features=attn_hidden_projection_size, out_features=vocab_size)
+        
+        if attn is not None:
+            self.attn_hidden_lin = nn.Linear(in_features=rnn_hidden_size + encoder_hidden_size,
+                                             out_features=attn_hidden_projection_size)
+            self.out = nn.Linear(in_features=attn_hidden_projection_size, out_features=vocab_size)
+        else:
+            # No attention: output directly from RNN hidden state
+            self.attn_hidden_lin = None
+            self.out = nn.Linear(in_features=rnn_hidden_size, out_features=vocab_size)
 
     @property
     def hidden_size(self):
@@ -462,7 +468,7 @@ class LuongDecoder(Decoder):
 
     @property
     def has_attention(self):
-        return True
+        return self.attn is not None
 
     def last_attn_hidden_init(self, batch_size):
         return torch.zeros(batch_size, self.attn_hidden_projection_size) if self.input_feed else None
@@ -528,9 +534,14 @@ class LuongDecoder(Decoder):
             # if RNN is LSTM state is tuple
             hidden = state[0] if isinstance(state, tuple) else state
 
-        # attention context
-        attn_weights, context = self.attn(t, hidden[-1], encoder_outputs)
-        attn_hidden = torch.tanh(self.attn_hidden_lin(torch.cat([context, hidden[-1]], dim=1)))  # (batch, attn_hidden)
+        # attention context (if attention is enabled)
+        if self.attn is not None:
+            attn_weights, context = self.attn(t, hidden[-1], encoder_outputs)
+            attn_hidden = torch.tanh(self.attn_hidden_lin(torch.cat([context, hidden[-1]], dim=1)))  # (batch, attn_hidden)
+        else:
+            # No attention: use RNN hidden state directly
+            attn_weights = None
+            attn_hidden = hidden[-1]
 
         # calculate logits
         output = self.out(attn_hidden)
