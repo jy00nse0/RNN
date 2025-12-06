@@ -10,19 +10,26 @@ def dataset_factory(args, device):
     - args.dataset이 'base'를 포함하면 정방향(Forward) 데이터 사용
     - args.dataset이 'deen'을 포함하면 De->En 방향으로 확장자(.de, .en) 교체
     - args.dataset이 'wmt15'를 포함하면 WMT15 데이터셋 경로 사용
+    - args.dataset이 'sample100k'이면 sample 데이터셋 사용
     """
-    print(f"Loading WMT data for {args.dataset}...")
+    print(f"Loading data for {args.dataset}...")
 
-    # Determine dataset version (WMT14 or WMT15)
-    if 'wmt15' in args.dataset.lower():
+    # Determine dataset version (sample100k, WMT14 or WMT15)
+    if 'sample100k' in args.dataset.lower():
+        root_dir = 'data/sample100k'
+    elif 'wmt15' in args.dataset.lower():
         root_dir = 'data/wmt15_vocab50k/base'
     else:
         root_dir = 'data/wmt14_vocab50k/base'
     
     # 1. Base(Forward) vs Reversed(Backward Source) 결정
     # T1_Base 등 'reverse': False인 실험은 'wmt14-base' 등의 이름을 사용해야 함
-    use_base = 'base' in args.dataset.lower()
-    data_dir = os.path.join(root_dir, 'base' if use_base else 'reversed')
+    # sample100k는 바로 root_dir을 사용
+    if 'sample100k' in args.dataset.lower():
+        data_dir = root_dir
+    else:
+        use_base = 'base' in args.dataset.lower()
+        data_dir = os.path.join(root_dir, 'base' if use_base else 'reversed')
     
     if not os.path.exists(data_dir):
         raise FileNotFoundError(f"Data directory not found: {data_dir}")

@@ -46,7 +46,7 @@ def parse_args():
                         help='Save model every epoch regardless of validation loss.')
     parser.add_argument('--dataset', choices=['twitter-applesupport', 'twitter-amazonhelp', 'twitter-delta',
                                               'twitter-spotifycares', 'twitter-uber_support', 'twitter-all',
-                                              'twitter-small'],
+                                              'twitter-small', 'wmt14-en-de', 'wmt15-deen', 'sample100k'],
                         help='Dataset for training model.')
     parser.add_argument('--teacher-forcing-ratio', type=float, default=1.0,
                         help='Teacher forcing ratio used in seq2seq models. [0-1]')
