@@ -12,7 +12,7 @@ def dataset_factory(args, device):
     """
     print(f"Loading WMT data for {args.dataset}...")
 
-    root_dir = 'data/wmt14_vocab50k'
+    root_dir = 'data/wmt14_vocab50k/base'
     
     # 1. Base(Forward) vs Reversed(Backward Source) 결정
     # T1_Base 등 'reverse': False인 실험은 'wmt14-base' 등의 이름을 사용해야 함
