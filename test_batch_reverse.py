@@ -2,71 +2,79 @@
 """
 Unit tests for batch_reverse_source function.
 Tests various tensor shapes and padding configurations.
+
+Note: The function is defined inline here because train.py has cascading imports
+that require torchtext (which may not be installed in all environments).
+This allows the test to run independently.
 """
 
 import torch
 import sys
 
-
-def batch_reverse_source(src_tensor, pad_idx, batch_first=False):
-    """
-    Reverse the content of source sequences while preserving <sos>, <eos>, and <pad> positions.
-    
-    Supports both (seq_len, batch) and (batch, seq_len) tensor shapes.
-    Handles padding at both beginning (left) and end (right) of sequences.
-    
-    Args:
-        src_tensor: Input tensor of shape (seq_len, batch) or (batch, seq_len)
-        pad_idx: Index of padding token
-        batch_first: If True, input shape is (batch, seq_len); if False, (seq_len, batch)
-    
-    Input structure: <sos> w1 w2 ... wn <eos> (with optional <pad> before or after)
-    Output structure: <sos> wn ... w2 w1 <eos> (with same <pad> positions preserved)
-    
-    Returns:
-        Tensor with reversed content, same shape as input
-    """
-    rev_src = src_tensor.clone()
-    
-    if batch_first:
-        batch_size, seq_len = src_tensor.size()
-    else:
-        seq_len, batch_size = src_tensor.size()
-    
-    for b in range(batch_size):
+# Try to import from train.py, fall back to inline definition if dependencies are missing
+try:
+    from train import batch_reverse_source
+except (ImportError, OSError):
+    # Define locally if train.py cannot be imported due to missing dependencies
+    def batch_reverse_source(src_tensor, pad_idx, batch_first=False):
+        """
+        Reverse the content of source sequences while preserving <sos>, <eos>, and <pad> positions.
+        
+        Supports both (seq_len, batch) and (batch, seq_len) tensor shapes.
+        Handles padding at both beginning (left) and end (right) of sequences.
+        
+        Args:
+            src_tensor: Input tensor of shape (seq_len, batch) or (batch, seq_len)
+            pad_idx: Index of padding token
+            batch_first: If True, input shape is (batch, seq_len); if False, (seq_len, batch)
+        
+        Input structure: <sos> w1 w2 ... wn <eos> (with optional <pad> before or after)
+        Output structure: <sos> wn ... w2 w1 <eos> (with same <pad> positions preserved)
+        
+        Returns:
+            Tensor with reversed content, same shape as input
+        """
+        rev_src = src_tensor.clone()
+        
         if batch_first:
-            seq = src_tensor[b, :]
+            batch_size, seq_len = src_tensor.size()
         else:
-            seq = src_tensor[:, b]
+            seq_len, batch_size = src_tensor.size()
         
-        # Find indices of non-padding tokens
-        non_pad_indices = (seq != pad_idx).nonzero(as_tuple=True)[0]
+        for b in range(batch_size):
+            if batch_first:
+                seq = src_tensor[b, :]
+            else:
+                seq = src_tensor[:, b]
+            
+            # Find indices of non-padding tokens
+            non_pad_indices = (seq != pad_idx).nonzero(as_tuple=True)[0]
+            
+            if len(non_pad_indices) <= 2:
+                # Only <sos> and <eos> or fewer - nothing to reverse
+                continue
+            
+            # First and last non-padding positions are <sos> and <eos>
+            first_non_pad = non_pad_indices[0].item()
+            last_non_pad = non_pad_indices[-1].item()
+            
+            # Content to reverse: tokens between <sos> (first_non_pad) and <eos> (last_non_pad)
+            start_idx = first_non_pad + 1  # skip <sos>
+            end_idx = last_non_pad  # up to but not including <eos>
+            
+            if end_idx <= start_idx:
+                # No content to reverse (only special tokens)
+                continue
+            
+            # Extract content and reverse
+            if batch_first:
+                content = src_tensor[b, start_idx:end_idx]
+                rev_src[b, start_idx:end_idx] = torch.flip(content, dims=[0])
+            else:
+                content = src_tensor[start_idx:end_idx, b]
+                rev_src[start_idx:end_idx, b] = torch.flip(content, dims=[0])
         
-        if len(non_pad_indices) <= 2:
-            # Only <sos> and <eos> or fewer - nothing to reverse
-            continue
-        
-        # First and last non-padding positions are <sos> and <eos>
-        first_non_pad = non_pad_indices[0].item()
-        last_non_pad = non_pad_indices[-1].item()
-        
-        # Content to reverse: tokens between <sos> (first_non_pad) and <eos> (last_non_pad)
-        start_idx = first_non_pad + 1  # skip <sos>
-        end_idx = last_non_pad  # up to but not including <eos>
-        
-        if end_idx <= start_idx:
-            # No content to reverse (only special tokens)
-            continue
-        
-        # Extract content and reverse
-        if batch_first:
-            content = src_tensor[b, start_idx:end_idx]
-            rev_src[b, start_idx:end_idx] = torch.flip(content, dims=[0])
-        else:
-            content = src_tensor[start_idx:end_idx, b]
-            rev_src[start_idx:end_idx, b] = torch.flip(content, dims=[0])
-    
-    return rev_src
+        return rev_src
 
 
 def run_tests():
