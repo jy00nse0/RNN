@@ -46,9 +46,10 @@ class GreedySampler(SequenceSampler):
     """
     def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length):
         batch_size = encoder_outputs.size(1)
+        device = encoder_outputs.device
         sequences = None
 
-        input_word = torch.tensor([sos_idx] * batch_size)
+        input_word = torch.tensor([sos_idx] * batch_size, device=device)
         kwargs = {}
         for t in range(max_length):
             output, attn_weights, kwargs = decoder(t, input_word, encoder_outputs, h_n, **kwargs)
@@ -58,7 +59,7 @@ class GreedySampler(SequenceSampler):
             sequences = argmax if sequences is None else torch.cat([sequences, argmax], dim=1)
 
         # ensure there is EOS token at the end of every sequence (important for calculating lengths)
-        end = torch.tensor([eos_idx] * batch_size).unsqueeze(1)  # (batch, 1)
+        end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)  # (batch, 1)
         sequences = torch.cat([sequences, end], dim=1)
 
         # calculate lengths
@@ -87,9 +88,10 @@ class RandomSampler(SequenceSampler):
     """
     def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length):
         batch_size = encoder_outputs.size(1)
+        device = encoder_outputs.device
         sequences = None
 
-        input_word = torch.tensor([sos_idx] * batch_size)
+        input_word = torch.tensor([sos_idx] * batch_size, device=device)
         kwargs = {}
         for t in range(max_length):
             output, attn_weights, kwargs = decoder(t, input_word, encoder_outputs, h_n, **kwargs)
@@ -98,7 +100,7 @@ class RandomSampler(SequenceSampler):
             sequences = indices if sequences is None else torch.cat([sequences, indices], dim=1)
 
         # ensure there is EOS token at the end of every sequence (important for calculating lengths)
-        end = torch.tensor([eos_idx] * batch_size).unsqueeze(1)  # (batch, 1)
+        end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)  # (batch, 1)
         sequences = torch.cat([sequences, end], dim=1)
 
         # calculate lengths
@@ -149,14 +151,15 @@ class BeamSearch(SequenceSampler):
 
     def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length):
         batch_size = encoder_outputs.size(1)
+        device = encoder_outputs.device
         sequences = None
 
         for batch in range(batch_size):
-            seq = self._sample(encoder_outputs[:, batch, :].unsqueeze(1), h_n[:, batch, :].unsqueeze(1), decoder, sos_idx, eos_idx, max_length).unsqueeze(0)
+            seq = self._sample(encoder_outputs[:, batch, :].unsqueeze(1), h_n[:, batch, :].unsqueeze(1), decoder, sos_idx, eos_idx, max_length, device).unsqueeze(0)
             sequences = seq if sequences is None else torch.cat([sequences, seq], dim=1)
 
         # ensure there is EOS token at the end of every sequence (important for calculating lengths)
-        end = torch.tensor([eos_idx] * batch_size).unsqueeze(1)  # (batch, 1)
+        end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)  # (batch, 1)
         sequences = torch.cat([sequences, end], dim=1)
 
         # calculate lengths
@@ -164,12 +167,12 @@ class BeamSearch(SequenceSampler):
 
         return sequences, lengths
 
-    def _sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length):
+    def _sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length, device):
         seqs = [Sequence(0, [sos_idx], {})]
         for t in range(max_length):
             new_seqs = []
             for seq in seqs:
-                input_word = torch.tensor(seq.tokens[-1]).long().view(1)
+                input_word = torch.tensor(seq.tokens[-1], device=device).long().view(1)
                 output, _, kwargs = decoder(t, input_word, encoder_outputs, h_n, **seq.kwargs)
                 seq.kwargs = kwargs
 
@@ -180,4 +183,4 @@ class BeamSearch(SequenceSampler):
 
             new_seqs = sorted(new_seqs, key=lambda seq: seq.score)
             seqs = new_seqs[-self.beam_width:]
-        return torch.tensor(seqs[-1].tokens)
+        return torch.tensor(seqs[-1].tokens, device=device)
