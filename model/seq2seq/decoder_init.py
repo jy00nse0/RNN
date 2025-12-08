@@ -37,7 +37,7 @@ class ZerosInit(DecoderInit):
 
     def forward(self, h_n):
         batch_size = h_n.size(1)
-        hidden = torch.zeros(self.decoder_num_layers, batch_size, self.decoder_hidden_size)
+        hidden = torch.zeros(self.decoder_num_layers, batch_size, self.decoder_hidden_size, device=h_n.device)
         return hidden if self.rnn_cell_type == GRU else (hidden, hidden.clone())
 
 
@@ -57,7 +57,7 @@ class BahdanauInit(DecoderInit):
         hidden = torch.tanh(self.linear(backward_h))
         hidden = self.adjust_hidden_size(hidden)
         return hidden if self.rnn_cell_type == GRU else (hidden, torch.zeros(self.decoder_num_layers, batch_size,
-                                                                             self.decoder_hidden_size))
+                                                                             self.decoder_hidden_size, device=h_n.device))
 
     def adjust_hidden_size(self, hidden):
         """
@@ -69,7 +69,7 @@ class BahdanauInit(DecoderInit):
         hidden_size = hidden.size(2)
 
         if num_layers < self.decoder_num_layers:
-            hidden = torch.cat([hidden, torch.zeros(self.decoder_num_layers - num_layers, batch_size, hidden_size)],
+            hidden = torch.cat([hidden, torch.zeros(self.decoder_num_layers - num_layers, batch_size, hidden_size, device=hidden.device)],
                                dim=0)
 
         if num_layers > self.decoder_num_layers:
