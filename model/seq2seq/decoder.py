@@ -410,7 +410,7 @@ class LuongDecoder(Decoder):
 
         self.args_init = {
             self.LAST_STATE: lambda encoder_outputs, h_n: self.initial_hidden(h_n),
-            self.LAST_ATTN_HIDDEN: lambda encoder_outputs, h_n: self.last_attn_hidden_init(h_n.size(1))  # h_n.size(1) == batch_size
+            self.LAST_ATTN_HIDDEN: lambda encoder_outputs, h_n: self.last_attn_hidden_init(h_n)
         }
 
         self._hidden_size = rnn_hidden_size
@@ -470,8 +470,11 @@ class LuongDecoder(Decoder):
     def has_attention(self):
         return self.attn is not None
 
-    def last_attn_hidden_init(self, batch_size):
-        return torch.zeros(batch_size, self.attn_hidden_projection_size) if self.input_feed else None
+    def last_attn_hidden_init(self, h_n):
+        if self.input_feed:
+            batch_size = h_n.size(1)
+            return torch.zeros(batch_size, self.attn_hidden_projection_size, device=h_n.device)
+        return None
 
     def _forward(self, t, input, encoder_outputs, last_state, last_attn_hidden=None):
         assert (self.input_feed and last_attn_hidden is not None) or (not self.input_feed and last_attn_hidden is None)
