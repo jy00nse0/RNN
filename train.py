@@ -230,8 +230,12 @@ def adjust_learning_rate(optimizer, epoch, decay_start):
 def main():
     args = parse_args()
     cuda = torch.cuda.is_available() and args.cuda
-    torch.set_default_tensor_type(torch.cuda.FloatTensor if cuda else torch.FloatTensor)
     device = torch.device('cuda' if cuda else 'cpu')
+
+    # Set seeds for reproducibility
+    torch.manual_seed(42)
+    if cuda:
+        torch.cuda.manual_seed_all(42)
 
     print("Using %s for training" % ('GPU' if cuda else 'CPU'))
     print('Loading dataset...', end='', flush=True)
@@ -244,6 +248,7 @@ def main():
     print('Done')
 
     model = train_model_factory(args, metadata)
+    model = model.to(device)
     if cuda and args.multi_gpu:
         model = nn.DataParallel(model, dim=1)
     
