@@ -65,9 +65,11 @@ class SimpleField:
         # Add <sos> and <eos> tokens
         processed = []
         for tokens in batch:
-            indices = [self.vocab.stoi['<sos>']] + \
-                      [self.vocab.stoi.get(tok, self.vocab.stoi['<unk>']) for tok in tokens] + \
-                      [self.vocab.stoi['<eos>']]
+            indices = (
+                [self.vocab.stoi['<sos>']] +
+                [self.vocab.stoi.get(tok, self.vocab.stoi['<unk>']) for tok in tokens] +
+                [self.vocab.stoi['<eos>']]
+            )
             processed.append(indices)
         
         # Pad to same length
