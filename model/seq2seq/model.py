@@ -94,6 +94,10 @@ class Seq2SeqPredict(nn.Module):
     def forward(self, questions, sampling_strategy, max_seq_len):
         # raw strings to tensor
         q = self.field.process([self.field.preprocess(question) for question in questions])
+        
+        # Move tensor to the same device as the model
+        device = next(self.encoder.parameters()).device
+        q = q.to(device)
 
         # encode question sequence
         encoder_outputs, h_n = self.encoder(q)
