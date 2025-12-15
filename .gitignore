@@ -9,6 +9,7 @@ checkpoints/
 *.pt
 *.pth
 *.ckpt
+.save/
 
 # Python
 __pycache__/
