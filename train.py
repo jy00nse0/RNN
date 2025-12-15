@@ -12,6 +12,7 @@ from model import train_model_factory
 from serialization import save_object, save_model, save_vocab
 from datetime import datetime
 from util import embedding_size_from_name
+from tqdm import tqdm
 
 """
 [Revised] train.py for RNN Paper Reproduction
@@ -177,7 +178,7 @@ def evaluate(model, val_iter, metadata,reverse_src=False):
     model.eval()
     total_loss = 0
     with torch.no_grad():
-        for batch in val_iter:
+        for batch in tqdm(val_iter, desc="Evaluating", leave=False):
             question, answer = batch.question, batch.answer
             # [Feature] Reverse Source if flag is set
             if reverse_src:
@@ -192,7 +193,7 @@ def evaluate(model, val_iter, metadata,reverse_src=False):
 def train(model, optimizer, train_iter, metadata, grad_clip,reverse_src=False):
     model.train()
     total_loss = 0
-    for batch in train_iter:
+    for batch in tqdm(train_iter, desc="Training", leave=False):
         question, answer = batch.question, batch.answer
         # [Feature] Reverse Source if flag is set
         if reverse_src:
