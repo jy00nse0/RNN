@@ -113,76 +113,12 @@ def parse_args():
     print(args)
     return args
 
-def batch_reverse_source(src_tensor, pad_idx, batch_first=False):
-    """
-    Reverse the content of source sequences while preserving <sos>, <eos>, and <pad> positions.
-    
-    Supports both (seq_len, batch) and (batch, seq_len) tensor shapes.
-    Handles padding at both beginning (left) and end (right) of sequences.
-    
-    Args:
-        src_tensor: Input tensor of shape (seq_len, batch) or (batch, seq_len)
-        pad_idx: Index of padding token
-        batch_first: If True, input shape is (batch, seq_len); if False, (seq_len, batch)
-    
-    Input structure: <sos> w1 w2 ... wn <eos> (with optional <pad> before or after)
-    Output structure: <sos> wn ... w2 w1 <eos> (with same <pad> positions preserved)
-    
-    Returns:
-        Tensor with reversed content, same shape as input
-    """
-    rev_src = src_tensor.clone()
-    
-    if batch_first:
-        batch_size, seq_len = src_tensor.size()
-    else:
-        seq_len, batch_size = src_tensor.size()
-    
-    for b in range(batch_size):
-        if batch_first:
-            seq = src_tensor[b, :]
-        else:
-            seq = src_tensor[:, b]
-        
-        # Find indices of non-padding tokens
-        non_pad_indices = (seq != pad_idx).nonzero(as_tuple=True)[0]
-        
-        if len(non_pad_indices) <= 2:
-            # Only <sos> and <eos> or fewer - nothing to reverse
-            continue
-        
-        # First and last non-padding positions are <sos> and <eos>
-        first_non_pad = non_pad_indices[0].item()
-        last_non_pad = non_pad_indices[-1].item()
-        
-        # Content to reverse: tokens between <sos> (first_non_pad) and <eos> (last_non_pad)
-        start_idx = first_non_pad + 1  # skip <sos>
-        end_idx = last_non_pad  # up to but not including <eos>
-        
-        if end_idx <= start_idx:
-            # No content to reverse (only special tokens)
-            continue
-        
-        # Extract content and reverse
-        if batch_first:
-            content = src_tensor[b, start_idx:end_idx]
-            rev_src[b, start_idx:end_idx] = torch.flip(content, dims=[0])
-        else:
-            content = src_tensor[start_idx:end_idx, b]
-            rev_src[start_idx:end_idx, b] = torch.flip(content, dims=[0])
-    
-    return rev_src
-
-
-def evaluate(model, val_iter, metadata,reverse_src=False):
+def evaluate(model, val_iter, metadata):
     model.eval()
     total_loss = 0
     with torch.no_grad():
         for batch in tqdm(val_iter, desc="Evaluating", leave=False):
             question, answer = batch.question, batch.answer
-            # [Feature] Reverse Source if flag is set
-            if reverse_src:
-                question = batch_reverse_source(question, metadata.padding_idx)
             logits = model(question, answer)
             loss = F.cross_entropy(logits.view(-1, metadata.vocab_size), answer[1:].view(-1),
                                    ignore_index=metadata.padding_idx)
@@ -190,14 +126,11 @@ def evaluate(model, val_iter, metadata,reverse_src=False):
     return total_loss / len(val_iter)
 
 
-def train(model, optimizer, train_iter, metadata, grad_clip,reverse_src=False):
+def train(model, optimizer, train_iter, metadata, grad_clip):
     model.train()
     total_loss = 0
     for batch in tqdm(train_iter, desc="Training", leave=False):
         question, answer = batch.question, batch.answer
-        # [Feature] Reverse Source if flag is set
-        if reverse_src:
-            question = batch_reverse_source(question, metadata.padding_idx)
         logits = model(question, answer)
 
         optimizer.zero_grad()
@@ -272,8 +205,8 @@ def main():
             if epoch > args.lr_decay_start:
                 adjust_learning_rate(optimizer, epoch, args.lr_decay_start)
 
-            train_loss = train(model, optimizer, train_iter, metadata, args.gradient_clip, reverse_src=args.reverse)
-            val_loss = evaluate(model, val_iter, metadata, reverse_src=args.reverse)
+            train_loss = train(model, optimizer, train_iter, metadata, args.gradient_clip)
+            val_loss = evaluate(model, val_iter, metadata)
             print("[Epoch=%d/%d] train_loss %f - val_loss %f time=%s " %
                   (epoch + 1, args.max_epochs, train_loss, val_loss, datetime.now() - start), end='')
 
@@ -287,7 +220,7 @@ def main():
     except (KeyboardInterrupt, BrokenPipeError):
         print('[Ctrl-C] Training stopped.')
 
-    test_loss = evaluate(model, test_iter, metadata, reverse_src=args.reverse)
+    test_loss = evaluate(model, test_iter, metadata)
     print("Test loss %f" % test_loss)
 
 
