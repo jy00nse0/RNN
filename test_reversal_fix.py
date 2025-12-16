@@ -16,8 +16,9 @@ import os
 import tempfile
 import torch
 
-# Add the project root to the path
-sys.path.insert(0, '/home/runner/work/RNN/RNN')
+# Add the project root to the path (directory containing this test file)
+TEST_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, TEST_DIR)
 
 from dataset import TranslationDataset, Vocab
 
@@ -83,7 +84,8 @@ def test_no_batch_reverse_function():
     print("="*60)
     
     # Read train.py and check that batch_reverse_source is not defined
-    with open('/home/runner/work/RNN/RNN/train.py', 'r') as f:
+    train_py_path = os.path.join(TEST_DIR, 'train.py')
+    with open(train_py_path, 'r') as f:
         train_content = f.read()
     
     # Check that the function definition doesn't exist
