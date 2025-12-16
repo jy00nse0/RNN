@@ -25,17 +25,22 @@ class Seq2SeqTrain(nn.Module):
     def forward(self, question, answer):
         # [기존 코드 유지]
         answer_seq_len = answer.size(0)
-        outputs = None
+        batch_size = answer.size(1)
         
         encoder_outputs, h_n = self.encoder(question)
 
+        # Pre-allocate output tensor to avoid repeated concatenation
+        # Shape: (seq_len-1, batch_size, vocab_size)
+        outputs = torch.empty(answer_seq_len - 1, batch_size, self.vocab_size,
+                             dtype=torch.float32, device=answer.device)
+        
         kwargs = {}
         input_word = answer[0]  
         for t in range(answer_seq_len - 1):
             output, attn_weights, kwargs = self.decoder(t, input_word, encoder_outputs, h_n, **kwargs)
 
-            out = output.unsqueeze(0)  
-            outputs = out if outputs is None else torch.cat([outputs, out], dim=0)
+            # Fill pre-allocated tensor in-place (no concatenation needed)
+            outputs[t] = output
 
             teacher_forcing = random.random() < self.teacher_forcing_ratio
             if teacher_forcing:
