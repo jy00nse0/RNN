@@ -14,11 +14,44 @@ This repository implements RNN-based sequence-to-sequence models for Neural Mach
 
 ## Quick Start
 
-### Prerequisites
+### Environment Setup
+
+**Python Version Requirements:**
+- Python 3.8, 3.9, 3.10, or 3.11 (compatible with PyTorch 2.2.2)
+- Recommended version: Python 3.10
+
+**Conda Virtual Environment Setup:**
 
 ```bash
-# Python 3.12 recommended
-pip install torch==2.2.2 "numpy<2" datasets sentencepiece sacrebleu tqdm
+# 1. Create Conda virtual environment (Python 3.10 recommended)
+conda create -n rnn_env python=3.10
+
+# 2. Activate the environment
+conda activate rnn_env
+
+# 3. Install PyTorch (with CUDA support)
+# For CUDA 11.8:
+conda install pytorch==2.2.2 torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+
+# Or for CUDA 12.1:
+conda install pytorch==2.2.2 torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
+
+# Or for CPU-only version:
+conda install pytorch==2.2.2 torchvision torchaudio cpuonly -c pytorch
+
+# 4. Install remaining dependencies
+# Note: pip will skip torch if it's already installed via conda
+pip install -r requirements.txt
+```
+
+**Deactivate Environment:**
+```bash
+conda deactivate
+```
+
+**Verify Installation:**
+```bash
+python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
 ```
 
 ### Running Tests
