@@ -31,8 +31,9 @@ class Seq2SeqTrain(nn.Module):
 
         # Pre-allocate output tensor to avoid repeated concatenation
         # Shape: (seq_len-1, batch_size, vocab_size)
+        # Use encoder_outputs dtype to match model precision (supports mixed precision)
         outputs = torch.empty(answer_seq_len - 1, batch_size, self.vocab_size,
-                             dtype=torch.float32, device=answer.device)
+                             dtype=encoder_outputs.dtype, device=answer.device)
         
         kwargs = {}
         input_word = answer[0]  
