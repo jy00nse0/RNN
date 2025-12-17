@@ -181,8 +181,8 @@ def evaluate(model, val_iter, metadata,reverse_src=False):
         for batch in tqdm(val_iter, desc="Evaluating", leave=False):
             question, answer = batch.question, batch.answer
             # [Feature] Reverse Source if flag is set
-            if reverse_src:
-                question = batch_reverse_source(question, metadata.padding_idx)
+            #if reverse_src:
+            #    question = batch_reverse_source(question, metadata.padding_idx)
             logits = model(question, answer)
             loss = F.cross_entropy(logits.view(-1, metadata.vocab_size), answer[1:].view(-1),
                                    ignore_index=metadata.padding_idx)
@@ -196,8 +196,8 @@ def train(model, optimizer, train_iter, metadata, grad_clip,reverse_src=False):
     for batch in tqdm(train_iter, desc="Training", leave=False):
         question, answer = batch.question, batch.answer
         # [Feature] Reverse Source if flag is set
-        if reverse_src:
-            question = batch_reverse_source(question, metadata.padding_idx)
+        #if reverse_src:
+        #    question = batch_reverse_source(question, metadata.padding_idx)
         logits = model(question, answer)
 
         optimizer.zero_grad()
