@@ -246,6 +246,36 @@ def run_command(cmd, log_path):
     with open(log_path, "w") as f:
         # 프로세스 실행, 표준 출력/에러를 로그 파일로 리다이렉션
         subprocess.run(cmd, shell=True, stdout=f, stderr=subprocess.STDOUT, check=True)
+def find_latest_checkpoint(save_path):
+    """
+    Find the latest checkpoint file in save_path.
+    
+    Returns:
+        (checkpoint_path, epoch) or (None, 0) if no checkpoint found
+    """
+    if not os.path.exists(save_path):
+        return None, 0
+    
+    checkpoint_files = [f for f in os.listdir(save_path) if f.startswith('model_epoch') and f.endswith('.pt')]
+    
+    if not checkpoint_files: 
+        return None, 0
+    
+    # Extract epoch numbers and find max
+    epochs = []
+    for f in checkpoint_files:
+        try:
+            # model_epoch10.pt -> 10
+            epoch_num = int(f.replace('model_epoch', '').replace('.pt', ''))
+            epochs.append((epoch_num, f))
+        except ValueError:
+            continue
+    
+    if not epochs:
+        return None, 0
+    
+    latest_epoch, latest_file = max(epochs, key=lambda x: x[0])
+    return os.path. join(save_path, latest_file), latest_epoch
 
 def main():
     print("======================================================")
@@ -301,6 +331,44 @@ def main():
         except subprocess.CalledProcessError as e:
             print(f"!!! Error during training {exp_name}. See logs at {log_file}")
             continue
+        # ==================== 수정: Resume 로직 추가 ====================
+
+        # 1. 최신 체크포인트 확인
+        checkpoint_path, completed_epochs = find_latest_checkpoint(save_path)
+        max_epochs = config['args']['max_epochs']
+        
+        # 2. 이미 학습 완료된 경우 스킵
+        if completed_epochs >= max_epochs:
+            print(f"Training already completed ({completed_epochs}/{max_epochs} epochs). Skipping.")
+        else:
+            # 3. 학습 명령 구성
+            cmd = f"python train.py --dataset {config['dataset']} --save-path {save_path}" + common_flags
+            
+            # Resume 플래그 추가
+            if checkpoint_path: 
+                cmd += f" --resume {checkpoint_path}"
+                print(f"Resuming from epoch {completed_epochs}/{max_epochs}")
+            else:
+                print(f"Starting fresh training (0/{max_epochs} epochs)")
+            
+            # 실험별 인자 추가
+            for key, value in config['args'].items():
+                flag_name = "--" + key.replace("_", "-")
+                
+                if isinstance(value, bool):
+                    if value:  cmd += f" {flag_name}"
+                else:
+                    cmd += f" {flag_name} {value}"
+
+            # 4. 학습 실행
+            try:
+                print(f"Training started...  Logs:  {log_file}")
+                run_command(cmd, log_file)
+                print("Training completed successfully.")
+            except subprocess.CalledProcessError as e:
+                print(f"! !! Error during training {exp_name}. See logs at {log_file}")
+                continue
+        # ================================================================
 
         # 5. Evaluation (Calculate BLEU)
         # 평가를 위한 Reference File 결정 (dataset.py의 로직과 일치해야 함)
