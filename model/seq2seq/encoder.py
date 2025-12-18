@@ -21,15 +21,6 @@ def encoder_factory(args, metadata):
 class Encoder(ABC, nn.Module):
     """
     Defines encoder for seq2seq model.
-
-    Inputs: input, h_0
-        - **input** (seq_length, batch_size): Input sequence.
-        - **h_0** (num_layers * num_directions, batch, hidden_size): Initial hidden state of RNN. Default: None.
-
-    Outputs: outputs, h_n
-        - **outputs** (seq_len, batch, hidden_size * num_directions): Outputs of RNN last layer for every timestamp.
-        - **h_n** (num_layers * num_directions, batch, hidden_size): RNN outputs for all layers for t=seq_len (last
-                    timestamp)
     """
 
     @abstractmethod
@@ -55,27 +46,6 @@ class Encoder(ABC, nn.Module):
 class SimpleEncoder(Encoder):
     """
     Encoder for seq2seq models.
-    
-    [OPTIMIZED] Uses fused cuDNN multi-layer RNN for better performance.
-    PyTorch's LSTM dropout parameter implements Zaremba-style (vertical/layer-to-layer) dropout,
-    which is mathematically equivalent to manual implementation but much faster.
-
-    :param rnn_cls: RNN callable constructor. RNN is either LSTM or GRU.
-    :param embed: Embedding layer.
-    :param embed_size: Dimensionality of word embeddings.
-    :param hidden_size: Dimensionality of RNN hidden representation.
-    :param num_layers: Number of layers in RNN. Default: 1.
-    :param dropout: Dropout probability for RNN (applied between layers). Default: 0.2.
-    :param bidirectional: If True, RNN will be bidirectional. Default: False.
-
-    Inputs: input, h_0
-        - **input** (seq_length, batch_size): Input sequence.
-        - **h_0** (num_layers * num_directions, batch, hidden_size): Initial hidden state of RNN. Default: None.
-
-    Outputs: outputs, h_n
-        - **outputs** (seq_len, batch, hidden_size * num_directions): Outputs of RNN last layer for every timestamp.
-        - **h_n** (num_layers * num_directions, batch, hidden_size): RNN outputs for all layers for t=seq_len (last
-                    timestamp)
     """
 
     def __init__(self, rnn_cls, embed, embed_size, hidden_size, num_layers=1, dropout=0.2,
@@ -88,20 +58,18 @@ class SimpleEncoder(Encoder):
         self._dropout = dropout
 
         self.embed = embed
+
+        # [Optimized] cuDNN Fused Implementation
+        # PyTorch nn.LSTM's dropout argument implements Zaremba-style dropout
+        # (applied to outputs of each layer except the last, NOT to recurrent connections).
+        rnn_dropout = dropout if num_layers > 1 else 0.0
         
-        # [OPTIMIZED] Use fused cuDNN multi-layer RNN
-        # PyTorch LSTM's dropout parameter applies Zaremba-style dropout (between layers only)
-        # This is mathematically identical to manual implementation but uses optimized cuDNN kernels
-        effective_dropout = dropout if num_layers > 1 else 0.0
-        
-        self.rnn = RNNWrapper(
-            rnn_cls(
-                input_size=embed_size,
-                hidden_size=hidden_size,
-                num_layers=num_layers,
-                dropout=effective_dropout,  # Zaremba-style: applied between layers, not recurrent
-                bidirectional=bidirectional
-            )
+        self.rnn = rnn_cls(
+            input_size=embed_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=rnn_dropout,
+            bidirectional=bidirectional
         )
 
     @property
@@ -117,15 +85,26 @@ class SimpleEncoder(Encoder):
         return self._num_layers
 
     def forward(self, input, h_0=None):
+        """
+        Inputs:
+            input: (seq_len, batch)
+            h_0: (num_layers * num_directions, batch, hidden_size) - Optional
+
+        Outputs:
+            outputs: (seq_len, batch, hidden_size * num_directions)
+            h_n: (num_layers * num_directions, batch, hidden_size)
+                 - Returns raw hidden state structure from PyTorch RNN.
+                 - No concatenation/projection is done here to maintain flexibility for decoder initialization.
+        """
+        # [Optimization] Ensure parameter compactness for cuDNN
+        # Essential for DataParallel and preventing performance degradation
+        self.rnn.flatten_parameters()
+
         embedded = self.embed(input)
         
-        # Flatten parameters for cuDNN optimization (helps with weight packing)
-        # This is optional but recommended for performance
-        self.rnn.module.flatten_parameters()
-        
-        # Single forward pass through all layers (cuDNN fused)
+        # [Optimized] Call cuDNN fused RNN once
+        # outputs: (seq_len, batch, hidden * dir)
+        # h_n: (layers * dir, batch, hidden)
         outputs, h_n = self.rnn(embedded, h_0)
         
-        # outputs: (seq_len, batch, hidden_size * num_directions)
-        # h_n: (num_layers * num_directions, batch, hidden_size)
         return outputs, h_n
