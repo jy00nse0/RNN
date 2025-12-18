@@ -110,5 +110,7 @@ class SimpleEncoder(Encoder):
             num_directions = 2
             h_n = h_n.view(self.num_layers, num_directions, h_n.size(1), h_n.size(2))
             h_n = torch.cat([h_n[:, 0], h_n[:, 1]], dim=-1)  # Combine forward and backward states
+        else:
+            h_n = h_n.view(self.num_layers, h_n.size(1), h_n.size(2))  # (layers, B, H)
 
         return outputs, h_n
