@@ -77,6 +77,25 @@ def collate_fn(batch, pad_idx=0):
     tgt_padded = pad_sequence(tgt_batch, padding_value=pad_idx, batch_first=False)
     
     return src_padded, tgt_padded
+    
+def seed_worker(worker_id):
+    """
+    [OPTIMIZED] Worker initialization function for reproducibility with multi-worker DataLoader.
+    Ensures each worker has a different but deterministic seed.
+    """
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+def collate_fn(batch, pad_idx=0):
+    """Collate function for DataLoader"""
+    src_batch, tgt_batch = zip(*batch)
+    
+    # Pad sequences to the same length
+    src_padded = pad_sequence(src_batch, padding_value=pad_idx, batch_first=False)
+    tgt_padded = pad_sequence(tgt_batch, padding_value=pad_idx, batch_first=False)
+    
+    return src_padded, tgt_padded
 
 def dataset_factory(args, device):
     """
@@ -141,26 +160,46 @@ def dataset_factory(args, device):
     
     # Create DataLoaders
     pad_idx = train_dataset.tgt_vocab.stoi['<pad>']
+
+    num_workers = getattr(args, "num_workers", 24)
+    pin_memory = bool(getattr(args, "cuda", False))
+    # Create generator for reproducible shuffling
+    generator = torch.Generator()
+    generator.manual_seed(42)
     
     train_iter = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        collate_fn=lambda b: collate_fn(b, pad_idx)
+        collate_fn=lambda b: collate_fn(b, pad_idx),
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        worker_init_fn=seed_worker,  # For reproducibility
+        generator=generator,  # For reproducible shuffling
+        persistent_workers=(num_workers > 0),  # Keep workers alive between epochs
+        prefetch_factor=2 if num_workers > 0 else None  # Prefetch batches
     )
     
     val_iter = DataLoader(
         val_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        collate_fn=lambda b: collate_fn(b, pad_idx)
+        collate_fn=lambda b: collate_fn(b, pad_idx),
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=(num_workers > 0),
+        prefetch_factor=2 if num_workers > 0 else None
     )
     
     test_iter = DataLoader(
         test_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        collate_fn=lambda b: collate_fn(b, pad_idx)
+        collate_fn=lambda b: collate_fn(b, pad_idx),
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=(num_workers > 0),
+        prefetch_factor=2 if num_workers > 0 else None
     )
     
     metadata = Metadata(vocab_size=len(train_dataset.tgt_vocab), padding_idx=pad_idx, vectors=None)
