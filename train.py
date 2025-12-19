@@ -75,17 +75,17 @@ def parse_args():
     
     # ===== GPU Settings =====
     gpu_args = parser.add_argument_group('GPU', 'GPU related settings.')
-    gpu_args.add_argument('--cuda', action='store_true', default=False, 
+    gpu_args.add_argument('--cuda', action='store_true', default=True, 
                          help='Use cuda if available.')
-    gpu_args.add_argument('--multi-gpu', action='store_true', default=False, 
+    gpu_args.add_argument('--multi-gpu', action='store_true', default=True, 
                          help='Use multiple GPUs if available.')
     
     # ===== [OPTIMIZED] Performance Options =====
     perf_args = parser.add_argument_group('Performance', 'Performance optimization settings.')
-    perf_args.add_argument('--num-workers', type=int, default=4,
+    perf_args.add_argument('--num-workers', type=int, default=32,
                           help='Number of DataLoader workers (0=single process, 4-8 recommended).')
-    perf_args.add_argument('--amp', action='store_true',
-                          help='Use Automatic Mixed Precision (1.5-2x faster but may affect reproducibility).')
+    perf_args.add_argument('--amp', action='store_true', dafault= True
+                          help='Use Automatic Mixed Precision (1.5-2x faster but may affect reproducibility).'
 
     # ===== Embedding Hyperparameters =====
     parser.add_argument('--embedding-size', type=int, default=None, 
