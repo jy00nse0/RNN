@@ -36,8 +36,15 @@ class ZerosInit(DecoderInit):
         self.rnn_cell_type = rnn_cell_type
 
     def forward(self, h_n):
+        # Accept both tensor and LSTM tuple (h_n, c_n)
+        if isinstance(h_n, tuple):
+            h_n = h_n[0]
+
         batch_size = h_n.size(1)
-        hidden = torch.zeros(self.decoder_num_layers, batch_size, self.decoder_hidden_size, device=h_n.device)
+        # preserve dtype/device of encoder hidden
+        dtype = h_n.dtype
+        device = h_n.device
+        hidden = torch.zeros(self.decoder_num_layers, batch_size, self.decoder_hidden_size, device=device, dtype=dtype)
         return hidden if self.rnn_cell_type == GRU else (hidden, hidden.clone())
 
 
@@ -45,19 +52,56 @@ class BahdanauInit(DecoderInit):
     def __init__(self, encoder_hidden_size, decoder_num_layers, decoder_hidden_size, rnn_cell_type):
         super(BahdanauInit, self).__init__()
         assert rnn_cell_type == LSTM or rnn_cell_type == GRU
+        # encoder_hidden_size here is expected to be the *per-direction* encoder hidden size
+        # (i.e. the original encoder hidden size, not doubled). The code will try to handle both
+        # interleaved (num_layers * num_directions, batch, enc_h) and combined
+        # (num_layers, batch, enc_h * num_directions) formats.
         self.linear = nn.Linear(in_features=encoder_hidden_size, out_features=decoder_hidden_size)
         self.decoder_num_layers = decoder_num_layers
         self.decoder_hidden_size = decoder_hidden_size
         self.rnn_cell_type = rnn_cell_type
 
     def forward(self, h_n):
+        # Accept both tensor and LSTM tuple (h_n, c_n)
+        if isinstance(h_n, tuple):
+            h_n = h_n[0]
+
         num_hidden_states = h_n.size(0)
         batch_size = h_n.size(1)
-        backward_h = h_n[torch.arange(1, num_hidden_states, 2)]  # take backward encoder RNN states
+        hidden_dim = h_n.size(2)
+
+        # Determine format and extract backward states
+        # Case A: interleaved PyTorch format: (num_layers * 2, batch, enc_h) where ordering is
+        #        [layer0_fwd, layer0_bwd, layer1_fwd, layer1_bwd, ...]
+        if num_hidden_states % 2 == 0 and hidden_dim == self.linear.in_features:
+            backward_h = h_n[torch.arange(1, num_hidden_states, 2)]  # (num_layers, batch, enc_h)
+        # Case B: combined format used elsewhere: (num_layers, batch, enc_h * 2)
+        elif num_hidden_states == self.decoder_num_layers and hidden_dim % 2 == 0 and (hidden_dim // 2) == self.linear.in_features:
+            # backward part is the second half of last dim
+            enc_h = hidden_dim // 2
+            backward_h = h_n[:, :, enc_h:]  # (num_layers, batch, enc_h)
+        else:
+            # Fallback: try best-effort to extract backward states or raise informative error
+            try:
+                # try interleaved selection as a fallback
+                backward_h = h_n[torch.arange(1, num_hidden_states, 2)]
+            except Exception:
+                raise RuntimeError(
+                    "Unable to interpret encoder hidden state shape in BahdanauInit. "
+                    f"h_n.shape={tuple(h_n.shape)}, expected either (num_layers*2, batch, enc_h) or "
+                    f"(num_layers, batch, enc_h*2)."
+                )
+
         hidden = torch.tanh(self.linear(backward_h))
         hidden = self.adjust_hidden_size(hidden)
-        return hidden if self.rnn_cell_type == GRU else (hidden, torch.zeros(self.decoder_num_layers, batch_size,
-                                                                             self.decoder_hidden_size, device=h_n.device))
+        batch_device = h_n.device
+        if self.rnn_cell_type == GRU:
+            return hidden
+        else:
+            # For LSTM, create zero-initialized cell state with matching dtype/device
+            dtype = h_n.dtype
+            cell = torch.zeros(self.decoder_num_layers, batch_size, self.decoder_hidden_size, device=batch_device, dtype=dtype)
+            return hidden, cell
 
     def adjust_hidden_size(self, hidden):
         """
@@ -69,10 +113,10 @@ class BahdanauInit(DecoderInit):
         hidden_size = hidden.size(2)
 
         if num_layers < self.decoder_num_layers:
-            hidden = torch.cat([hidden, torch.zeros(self.decoder_num_layers - num_layers, batch_size, hidden_size, device=hidden.device)],
+            hidden = torch.cat([hidden, torch.zeros(self.decoder_num_layers - num_layers, batch_size, hidden_size, device=hidden.device, dtype=hidden.dtype)],
                                dim=0)
 
         if num_layers > self.decoder_num_layers:
             hidden = hidden[:self.decoder_num_layers]
 
-        return hidden
+        return hidden hidden
