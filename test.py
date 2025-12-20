@@ -372,13 +372,15 @@ def main():
             continue
 
         # 2. Setup Directories
-        save_path = os.path.join("checkpoints", exp_name)
+        SAVE_DIR = "/workspace"
+        save_path = os.path.join(SAVE_DIR, "checkpoints", exp_name)
+        #save_path = os.path.join("checkpoints", exp_name)
         os.makedirs(save_path, exist_ok=True)
         log_file = os.path.join(save_path, "train.log")
         
         # 3. Construct Training Command
         # 기본 플래그 구성
-        cmd = f"python train.py --dataset {config['dataset']} --save-path {save_path}" + common_flags
+        cmd = f"python train.py --dataset {config['dataset']} --save-path {save_path}" + common_flags + " --amp --num-workers 64"
         
         # 실험별 인자 추가
         for key, value in config['args'].items():
