@@ -374,7 +374,7 @@ def main():
         # 2. Setup Directories
         SAVE_DIR = "/workspace"
         save_path = os.path.join(SAVE_DIR, "checkpoints", exp_name)
-        save_path = os.path.join("checkpoints", exp_name)
+        #save_path = os.path.join("checkpoints", exp_name)
         os.makedirs(save_path, exist_ok=True)
         log_file = os.path.join(save_path, "train.log")
         
