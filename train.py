@@ -84,8 +84,8 @@ def parse_args():
     perf_args = parser.add_argument_group('Performance', 'Performance optimization settings.')
     perf_args.add_argument('--num-workers', type=int, default=32,
                           help='Number of DataLoader workers (0=single process, 4-8 recommended).')
-    perf_args.add_argument('--amp', action='store_true', dafault= True
-                          help='Use Automatic Mixed Precision (1.5-2x faster but may affect reproducibility).'
+    perf_args.add_argument('--amp', action='store_true', default= True,
+                          help='Use Automatic Mixed Precision (1.5-2x faster but may affect reproducibility).')
 
     # ===== Embedding Hyperparameters =====
     parser.add_argument('--embedding-size', type=int, default=None, 
