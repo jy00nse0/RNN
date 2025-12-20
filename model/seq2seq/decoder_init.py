@@ -119,4 +119,4 @@ class BahdanauInit(DecoderInit):
         if num_layers > self.decoder_num_layers:
             hidden = hidden[:self.decoder_num_layers]
 
-        return hidden hidden
+        return hidden
