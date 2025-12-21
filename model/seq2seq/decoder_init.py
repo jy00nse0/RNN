@@ -154,7 +154,6 @@ class EncoderLastStateInit(DecoderInit):
         elif self.rnn_cell_type == LSTM and c_enc is None:
             # Edge case: encoder is GRU but decoder is LSTM
             # Initialize cell state with zeros
-            batch_size = h_dec.size(1)
             c_dec = torch.zeros_like(h_dec)
             return h_dec, c_dec
         
