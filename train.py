@@ -42,7 +42,7 @@ Real-time Monitoring:
 
 
 def monitor_gradients(model):
-    """Gradient 통계를 계산하여 학습 붕괴 감지"""
+    """Calculate gradient statistics to detect training collapse"""
     total_norm = 0.0
     grad_stats = {
         'max_grad': 0.0,
@@ -68,7 +68,7 @@ def monitor_gradients(model):
 
 
 class LossMonitor:
-    """Loss의 급격한 변화를 감지"""
+    """Detect sudden changes in loss"""
     def __init__(self, window_size=10, spike_threshold=3.0):
         self.losses = []
         self.window_size = window_size
@@ -80,7 +80,7 @@ class LossMonitor:
             self.losses.pop(0)
     
     def is_spiking(self):
-        """Loss가 급증했는지 확인"""
+        """Check if loss has spiked suddenly"""
         if len(self.losses) < 2:
             return False
         
@@ -93,7 +93,7 @@ class LossMonitor:
         return False
     
     def is_diverging(self):
-        """Loss가 발산하는지 확인"""
+        """Check if loss is diverging"""
         if len(self.losses) < self.window_size:
             return False
         
@@ -103,17 +103,17 @@ class LossMonitor:
 
 
 def calculate_perplexity(loss):
-    """Loss를 Perplexity로 변환 (더 직관적)"""
+    """Convert loss to perplexity for more intuitive interpretation"""
     return math.exp(loss)
 
 
 class ActivationMonitor:
-    """RNN hidden states와 attention weights 모니터링"""
+    """Monitor RNN hidden states and attention weights"""
     def __init__(self):
         self.stats = {}
     
     def register_hooks(self, model):
-        """Model에 forward hook 등록"""
+        """Register forward hooks on model"""
         def hook_fn(name):
             def hook(module, input, output):
                 if isinstance(output, tuple):
@@ -134,7 +134,7 @@ class ActivationMonitor:
                 module.register_forward_hook(hook_fn(name))
     
     def check_anomalies(self):
-        """활성화 값의 이상 징후 감지"""
+        """Detect anomalies in activation values"""
         warnings = []
         for name, stat in self.stats.items():
             if stat['nan_count'] > 0:
@@ -149,11 +149,16 @@ class ActivationMonitor:
 
 
 def sample_generation(model, val_iter, metadata, reverse_src=False, num_samples=3):
-    """실제 생성 결과를 확인하여 붕괴 감지"""
+    """Check actual generation results to detect collapse"""
     model.eval()
     
-    with torch.no_grad():
+    try:
         batch = next(iter(val_iter))
+    except StopIteration:
+        print("\n⚠️  Validation iterator is empty. Skipping sample generation.")
+        return
+    
+    with torch.no_grad():
         question, answer = batch.question[:, :num_samples], batch.answer[:, :num_samples]
         
         # Check if model has greedy_decode method
@@ -183,10 +188,12 @@ def sample_generation(model, val_iter, metadata, reverse_src=False, num_samples=
             print(f"  Target:  {' '.join(tgt)}")
             print(f"  Output:  {' '.join(out)}")
             
-            if len(set(out)) < 3:
+            # Check for repetitive output (only if output has at least 3 tokens)
+            if len(out) >= 3 and len(set(out)) < 3:
                 print(f"  ⚠️  WARNING: Repetitive output detected!")
             
-            if all(w == out[0] for w in out):
+            # Check for same-token repetition (only if output is not empty)
+            if len(out) > 0 and all(w == out[0] for w in out):
                 print(f"  🚨 CRITICAL: Model generating same token!")
         
         print("="*70)

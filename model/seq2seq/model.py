@@ -63,7 +63,7 @@ class Seq2SeqTrain(nn.Module):
             eos_idx: End-of-sequence token index (default: 2)
             
         Returns:
-            Generated sequences (seq_len, batch_size)
+            Generated sequences (max_len, batch_size)
         """
         batch_size = question.size(1)
         device = question.device
@@ -73,17 +73,16 @@ class Seq2SeqTrain(nn.Module):
         
         # Initialize with SOS token
         input_word = torch.tensor([sos_idx] * batch_size, device=device)
-        sequences = []
+        
+        # Pre-allocate output tensor for efficiency
+        sequences = torch.zeros(max_len, batch_size, dtype=torch.long, device=device)
         
         kwargs = {}
         for t in range(max_len):
             output, attn_weights, kwargs = self.decoder(t, input_word, encoder_outputs, h_n, **kwargs)
             _, argmax = output.max(dim=1)  # Greedy selection
             input_word = argmax
-            sequences.append(argmax.unsqueeze(0))
-        
-        # Stack sequences
-        sequences = torch.cat(sequences, dim=0)  # (max_len, batch_size)
+            sequences[t] = argmax
         
         return sequences
 
