@@ -46,8 +46,9 @@ decoder_map = {
 }
 
 
-def decoder_factory(args, metadata):
-    embed = embeddings_factory(args, metadata)
+def decoder_factory(args, metadata, embed=None):
+    if embed is None:
+        embed = embeddings_factory(args, metadata)
     attn = attention_factory(args)
     init = decoder_init_factory(args)
     return decoder_map[args.decoder_type](args, embed, attn, init, metadata)
