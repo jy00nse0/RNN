@@ -5,8 +5,8 @@ import torch
 import sys
 import argparse
 '''
-사용 가능한 실험 목록 출력 명령:
-python test.py --list
+사용 가능한 실험 목록 출력 명령: 
+python test. py --list
 단일 실험 실행 (예: T1_Base_Reverse) 명령:
 python test.py -e T1_Base_Reverse
 여러 실험을 순차 실행 명령:
@@ -15,7 +15,7 @@ python test.py -e T1_Base_Reverse T1_Global_Location_Feed
 python test.py -e all
 python test.py
 CUDA 강제 비활성화 (CPU로 실행) 명령:
-python test.py -e T1_Base_Reverse --no-cudatrain.py 
+python test. py -e T1_Base_Reverse --no-cudatrain. py 
 #resume 체크포인트를 로드하고 optimizer / epoch 상태 등을 복원하여 이어 학습
 
 #python train.py --dataset wmt14-en-de --save-path checkpoints/T1_Base_Reverse --resume checkpoints/T1_Base_Reverse/model_epoch3.pt --encoder-rnn-cell LSTM --max-epochs 10 --reverse --cuda
@@ -26,10 +26,10 @@ python test.py -e T1_Base_Reverse --no-cudatrain.py
 # ============================================================
 COMMON = {
     "encoder_rnn_cell": "LSTM", "decoder_rnn_cell": "LSTM",
-    "encoder_num_layers": 4, "decoder_num_layers": 4,
-    "encoder_hidden_size": 1000, "decoder_hidden_size": 1000,
+    "encoder_num_layers": 4, "decoder_num_layers":  4,
+    "encoder_hidden_size": 1000, "decoder_hidden_size":  1000,
     "embedding_size": 1000, "batch_size": 128,
-    "learning_rate": 1.0, "gradient_clip": 5.0,
+    "learning_rate": 1. 0, "gradient_clip":  5.0,
 }
 
 EPOCHS_BASE, EPOCHS_DR = 10, 12
@@ -45,8 +45,8 @@ experiments = {
     # ========================================================
     
     # [Row 1] Base Model
-    # 설정: Reverse=False, Dropout=0.0
-    "T1_Base": {
+    # 설정:  Reverse=False, Dropout=0.0
+    "T1_Base":  {
         "dataset": "wmt14-en-de", 
         "args": {**COMMON, "max_epochs": EPOCHS_BASE, "lr_decay_start": DECAY_BASE, 
                  "encoder_rnn_dropout": 0.0, "decoder_rnn_dropout": 0.0, 
@@ -57,9 +57,9 @@ experiments = {
     # [Row 2] Base + Reverse
     # 설정: Reverse=True
     "T1_Base_Reverse": {
-        "dataset": "wmt14-en-de",
-        "args": {**COMMON, "max_epochs": EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
-                 "encoder_rnn_dropout": 0.0, "decoder_rnn_dropout": 0.0,
+        "dataset":  "wmt14-en-de",
+        "args": {**COMMON, "max_epochs":  EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
+                 "encoder_rnn_dropout": 0.0, "decoder_rnn_dropout":  0.0,
                  "attention_type": "none",
                  "reverse": True}
     },
@@ -68,15 +68,15 @@ experiments = {
     # 설정: Dropout=0.2 (Epochs=12, Decay=8)
     "T1_Base_Reverse_Dropout": {
         "dataset": "wmt14-en-de",
-        "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
-                 "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout": 0.2,
+        "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start":  DECAY_DR,
+                 "encoder_rnn_dropout":  0.2, "decoder_rnn_dropout": 0.2,
                  "attention_type": "none",
                  "reverse": True}
     },
 
     # [Row 4] + Global (Location)
     # 논문 Table 1 Row 4: Global Attention (location)
-    "T1_Global_Location": {
+    "T1_Global_Location":  {
         "dataset": "wmt14-en-de",
         "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
                  "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout": 0.2,
@@ -86,10 +86,10 @@ experiments = {
     },
 
     # [Row 5] + Global (Location) + Feed
-    # (Row 4와 동일하게 Feed=True로 설정됨. 논문에서는 Feed 유무로 성능 차이를 강조함)
+    # (Row 4와 동일하게 Feed=True로 설정됨.  논문에서는 Feed 유무로 성능 차이를 강조함)
     "T1_Global_Location_Feed": {
         "dataset": "wmt14-en-de",
-        "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
+        "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start":  DECAY_DR,
                  "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout": 0.2,
                  "attention_type": "global", "attention_score": "location",
                  "luong_input_feed": True,
@@ -98,10 +98,10 @@ experiments = {
 
     # [Row 6] + Local-p (General) + Feed
     "T1_LocalP_General_Feed": {
-        "dataset": "wmt14-en-de",
-        "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
+        "dataset":  "wmt14-en-de",
+        "args": {**COMMON, "max_epochs":  EPOCHS_DR, "lr_decay_start": DECAY_DR,
                  "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout": 0.2,
-                 "attention_type": "local-p", "attention_score": "general",
+                 "attention_type": "local-p", "attention_score":  "general",
                  "half_window_size": 10, "local_p_hidden_size": 1000,
                  "luong_input_feed": True,
                  "reverse": True}
@@ -110,11 +110,11 @@ experiments = {
     # [Row 7] + Local-p (General) + Feed + Unk Replace
     # 학습 설정은 Row 6와 동일하며, 평가 시 UNK Replacement 수행 (Post-process)
     "T1_LocalP_General_Feed_Unk": {
-        "dataset": "wmt14-en-de",
-        "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
-                 "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout": 0.2,
+        "dataset":  "wmt14-en-de",
+        "args": {**COMMON, "max_epochs":  EPOCHS_DR, "lr_decay_start": DECAY_DR,
+                 "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout":  0.2,
                  "attention_type": "local-p", "attention_score": "general",
-                 "half_window_size": 10, "local_p_hidden_size": 1000,
+                 "half_window_size": 10, "local_p_hidden_size":  1000,
                  "luong_input_feed": True,
                  "reverse": True},
         "post_process": "unk_replace"
@@ -122,8 +122,8 @@ experiments = {
     
     # [Row 8] Ensemble (Inference Only)
     "T1_Ensemble8_Unk": {
-        "dataset": "wmt14-en-de",
-        "ensemble": True,
+        "dataset":  "wmt14-en-de",
+        "ensemble":  True,
         "members": ["T1_Global_Location_Feed", "T1_LocalP_General_Feed"], # 실제로는 8개 모델 필요
         "post_process": "unk_replace"
     },
@@ -134,8 +134,8 @@ experiments = {
     # ========================================================
     
     "T3_Base_Reverse": {
-        "dataset": "wmt15-deen", # Triggers De->En in dataset.py
-        "args": {**COMMON, "max_epochs": EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
+        "dataset": "wmt15-deen", # Triggers De->En in dataset. py
+        "args": {**COMMON, "max_epochs":  EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
                  "encoder_rnn_dropout": 0.0, "decoder_rnn_dropout": 0.0,
                  "attention_type": "none",
                  "reverse": True}
@@ -143,7 +143,7 @@ experiments = {
 
     "T3_Global_Location": {
         "dataset": "wmt15-deen",
-        "args": {**COMMON, "max_epochs": EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
+        "args": {**COMMON, "max_epochs":  EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
                  "encoder_rnn_dropout": 0.0, "decoder_rnn_dropout": 0.0,
                  "attention_type": "global", "attention_score": "location",
                  "luong_input_feed": True,
@@ -152,17 +152,17 @@ experiments = {
 
     "T3_Global_Location_Feed": {
         "dataset": "wmt15-deen",
-        "args": {**COMMON, "max_epochs": EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
+        "args":  {**COMMON, "max_epochs": EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
                  "encoder_rnn_dropout": 0.0, "decoder_rnn_dropout": 0.0,
-                 "attention_type": "global", "attention_score": "location",
+                 "attention_type":  "global", "attention_score":  "location",
                  "luong_input_feed": True,
                  "reverse": True}
     },
 
     "T3_Global_Dot_Drop_Feed": {
-        "dataset": "wmt15-deen",
-        "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
-                 "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout": 0.2,
+        "dataset":  "wmt15-deen",
+        "args": {**COMMON, "max_epochs":  EPOCHS_DR, "lr_decay_start":  DECAY_DR,
+                 "encoder_rnn_dropout":  0.2, "decoder_rnn_dropout": 0.2,
                  "attention_type": "global", "attention_score": "dot",
                  "luong_input_feed": True,
                  "reverse": True}
@@ -181,19 +181,19 @@ experiments = {
 
     # ========================================================
     # TABLE 4 — Attention Ablation Study (En→De)
-    # Common: Reverse=True, Dropout=0.2, Feed=True, Epochs=12
+    # Common:  Reverse=True, Dropout=0.2, Feed=True, Epochs=12
     # ========================================================
 
-    "T4_Global_Location": {
+    "T4_Global_Location":  {
         "dataset": "wmt14-en-de",
-        "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
-                 "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout": 0.2,
+        "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start":  DECAY_DR,
+                 "encoder_rnn_dropout":  0.2, "decoder_rnn_dropout": 0.2,
                  "attention_type": "global", "attention_score": "location",
-                 "luong_input_feed": True,
-                 "reverse": True}
+                 "luong_input_feed":  True,
+                 "reverse":  True}
     },
 
-    "T4_Global_Dot": {
+    "T4_Global_Dot":  {
         "dataset": "wmt14-en-de",
         "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
                  "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout": 0.2,
@@ -202,7 +202,7 @@ experiments = {
                  "reverse": True}
     },
 
-    "T4_Global_General": {
+    "T4_Global_General":  {
         "dataset": "wmt14-en-de",
         "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
                  "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout": 0.2,
@@ -212,10 +212,10 @@ experiments = {
     },
 
     "T4_LocalM_Dot": {
-        "dataset": "wmt14-en-de",
-        "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
+        "dataset":  "wmt14-en-de",
+        "args": {**COMMON, "max_epochs":  EPOCHS_DR, "lr_decay_start": DECAY_DR,
                  "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout": 0.2,
-                 "attention_type": "local-m", "attention_score": "dot",
+                 "attention_type": "local-m", "attention_score":  "dot",
                  "half_window_size": 10,
                  "luong_input_feed": True,
                  "reverse": True}
@@ -233,15 +233,15 @@ experiments = {
 
     "T4_LocalP_Dot": {
         "dataset": "wmt14-en-de",
-        "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
+        "args":  {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
                  "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout": 0.2,
-                 "attention_type": "local-p", "attention_score": "dot",
+                 "attention_type":  "local-p", "attention_score": "dot",
                  "half_window_size": 10, "local_p_hidden_size": 1000,
-                 "luong_input_feed": True,
-                 "reverse": True}
+                 "luong_input_feed":  True,
+                 "reverse":  True}
     },
 
-    "T4_LocalP_General": {
+    "T4_LocalP_General":  {
         "dataset": "wmt14-en-de",
         "args": {**COMMON, "max_epochs": EPOCHS_DR, "lr_decay_start": DECAY_DR,
                  "encoder_rnn_dropout": 0.2, "decoder_rnn_dropout": 0.2,
@@ -258,18 +258,18 @@ experiments = {
 # ============================================================
 def run_command(cmd, log_path=None):
     """
-    Execute a shell command.
+    Execute a shell command. 
     
     Args:
-        cmd: Command string to execute
-        log_path: If provided, redirect stdout/stderr to this file.
+        cmd:  Command string to execute
+        log_path:  If provided, redirect stdout/stderr to this file. 
                   If None, output to terminal.
     """
     print(f"[Exec] {cmd}")
     
     if log_path:
         # 로그 파일로 출력 (evaluation용)
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        os.makedirs(os.path. dirname(log_path), exist_ok=True)
         with open(log_path, "w") as f:
             subprocess.run(cmd, shell=True, stdout=f, stderr=subprocess.STDOUT, check=True)
     else:
@@ -284,12 +284,12 @@ def find_latest_checkpoint(save_path):
     Returns:
         (checkpoint_path, epoch) or (None, 0) if no checkpoint found
     """
-    if not os.path.exists(save_path):
+    if not os. path.exists(save_path):
         return None, 0
     
     checkpoint_files = [f for f in os.listdir(save_path) if f.startswith('model_epoch') and f.endswith('.pt')]
     
-    if not checkpoint_files: 
+    if not checkpoint_files:  
         return None, 0
     
     # Extract epoch numbers and find max
@@ -305,8 +305,58 @@ def find_latest_checkpoint(save_path):
     if not epochs:
         return None, 0
     
-    latest_epoch, latest_file = max(epochs, key=lambda x: x[0])
+    latest_epoch, latest_file = max(epochs, key=lambda x:  x[0])
     return os.path.join(save_path, latest_file), latest_epoch
+
+
+def evaluate_bleu(save_path, ref_file, epoch, common_flags):
+    """
+    Calculate BLEU score for a specific epoch.
+    
+    Args:
+        save_path: Path to model checkpoint directory
+        ref_file: Path to reference file
+        epoch: Epoch number to evaluate
+        common_flags: Common flags (e.g., --cuda)
+    
+    Returns:
+        BLEU score as float, or None if evaluation failed
+    """
+    eval_cmd = f"python calculate_bleu.py --model-path {save_path} --reference-path {ref_file} --epoch {epoch}" + common_flags
+    
+    try:
+        # Run evaluation and capture output
+        result = subprocess. run(
+            eval_cmd, 
+            shell=True, 
+            capture_output=True, 
+            text=True, 
+            check=True
+        )
+        
+        # Parse BLEU score from output (adjust this based on your calculate_bleu.py output format)
+        output_lines = result.stdout.strip().split('\n')
+        for line in output_lines:
+            if 'BLEU' in line or 'bleu' in line: 
+                # Try to extract numerical score
+                # This assumes format like "BLEU: 25.3" or "BLEU = 25.3"
+                parts = line.replace('=', ': ').split(':')
+                if len(parts) >= 2:
+                    try:
+                        bleu_score = float(parts[-1].strip().split()[0])
+                        return bleu_score
+                    except (ValueError, IndexError):
+                        pass
+        
+        # If we can't parse, return the last line
+        return output_lines[-1] if output_lines else "Unknown"
+        
+    except subprocess.CalledProcessError as e:
+        print(f"BLEU evaluation failed for epoch {epoch}:  {e}")
+        return None
+    except Exception as e:
+        print(f"Unexpected error during BLEU evaluation: {e}")
+        return None
 
 
 def parse_cli():
@@ -315,7 +365,7 @@ def parse_cli():
     )
     parser.add_argument(
         "--experiments", "-e", nargs="+", metavar="EXP",
-        help='Experiment names to run (space-separated). Use "all" to run all experiments. If omitted, runs all experiments.'
+        help='Experiment names to run (space-separated). Use "all" to run all experiments.  If omitted, runs all experiments.'
     )
     parser.add_argument(
         "--list", action="store_true", help="List available experiment names and exit."
@@ -330,13 +380,13 @@ def main():
     args = parse_cli()
 
     print("======================================================")
-    print("      RNN-NMT Reproduction: Test Runner               ")
+    print("      RNN-NMT Reproduction:  Test Runner               ")
     print("======================================================")
 
     # List experiments and exit if requested
     if args.list:
         print("Available experiments:")
-        for name in experiments.keys():
+        for name in experiments. keys():
             print(" -", name)
         return
 
@@ -353,7 +403,7 @@ def main():
             # Keep only known ones
             selected = set(n for n in selected if n in experiments)
             if not selected:
-                print("No valid experiments selected. Exiting.")
+                print("No valid experiments selected.  Exiting.")
                 return
     else:
         # default: run all
@@ -368,7 +418,7 @@ def main():
         print(f"CUDA Available: {device_name}")
         common_flags = " --cuda"
     else:
-        print("CUDA NOT Available or disabled. Running on CPU (Warning: Slow)")
+        print("CUDA NOT Available or disabled.  Running on CPU (Warning: Slow)")
         common_flags = ""
 
     os.makedirs("checkpoints", exist_ok=True)
@@ -382,14 +432,23 @@ def main():
         
         # 1. Skip Ensemble Training (Requires separately trained models or custom logic)
         if config.get("ensemble", False):
-            print(f"Skipping training for Ensemble '{exp_name}'. (Inference logic required)")
+            print(f"Skipping training for Ensemble '{exp_name}'.  (Inference logic required)")
             continue
 
         # 2. Setup Directories
         SAVE_DIR = "/workspace"
         save_path = os.path.join(SAVE_DIR, "checkpoints", exp_name)
-        #save_path = os.path.join("checkpoints", exp_name)
         os.makedirs(save_path, exist_ok=True)
+        
+        # Setup BLEU log file
+        bleu_log_file = os.path.join(save_path, "bleu_scores.log")
+        
+        # Determine reference file
+        is_deen = 'deen' in config['dataset']
+        tgt_ext = 'en' if is_deen else 'de'
+        is_wmt15 = 'wmt15' in config['dataset']. lower()
+        dataset_name = 'wmt15' if is_wmt15 else 'wmt14'
+        ref_file = f"data/{dataset_name}_vocab50k/base/test.{tgt_ext}"
         
         # ==================== Resume 로직 ====================
 
@@ -405,7 +464,7 @@ def main():
             cmd = f"python train.py --dataset {config['dataset']} --save-path {save_path}" + common_flags + " --amp --num-workers 64"
             
             # Resume 플래그 추가
-            if checkpoint_path: 
+            if checkpoint_path:  
                 cmd += f" --resume {checkpoint_path}"
                 print(f"Resuming from epoch {completed_epochs}/{max_epochs}")
             else:
@@ -417,57 +476,61 @@ def main():
                 
                 if isinstance(value, bool):
                     if value:  cmd += f" {flag_name}"
-                else:
+                else: 
                     cmd += f" {flag_name} {value}"
 
-            # 4. 학습 실행 (터미널로 직접 출력)
+            # 4. 학습 실행 with epoch-by-epoch BLEU evaluation
             try:
-                print(f"Training started (output to terminal)...")
-                run_command(cmd, log_path=None)  # ← log_path=None으로 터미널 출력
+                print(f"Training started with per-epoch BLEU evaluation...")
+                
+                # Open BLEU log file in append mode
+                with open(bleu_log_file, 'a') as bleu_log:
+                    # Write header if starting fresh
+                    if completed_epochs == 0:
+                        bleu_log.write(f"Experiment: {exp_name}\n")
+                        bleu_log. write(f"Dataset: {config['dataset']}\n")
+                        bleu_log.write(f"{'='*60}\n")
+                        bleu_log.flush()
+                    
+                    # Train one epoch at a time
+                    for epoch in range(completed_epochs + 1, max_epochs + 1):
+                        print(f"\n>>> Training Epoch {epoch}/{max_epochs}")
+                        
+                        # Modify command to train only one epoch
+                        epoch_cmd = cmd.replace(f"--max-epochs {max_epochs}", f"--max-epochs {epoch}")
+                        
+                        # Run training
+                        run_command(epoch_cmd, log_path=None)
+                        
+                        # Evaluate BLEU after this epoch
+                        print(f">>> Evaluating BLEU for Epoch {epoch}...")
+                        bleu_score = evaluate_bleu(save_path, ref_file, epoch, common_flags)
+                        
+                        # Log result
+                        if bleu_score is not None: 
+                            log_line = f"Epoch {epoch: 2d}:  BLEU = {bleu_score}\n"
+                            print(f"    {log_line. strip()}")
+                            bleu_log.write(log_line)
+                            bleu_log. flush()
+                        else: 
+                            log_line = f"Epoch {epoch:2d}:  BLEU evaluation failed\n"
+                            print(f"    {log_line. strip()}")
+                            bleu_log.write(log_line)
+                            bleu_log.flush()
+                
                 print("Training completed successfully.")
             except subprocess.CalledProcessError as e:
-                print(f"!!! Error during training {exp_name}.")
+                print(f"! !! Error during training {exp_name}.")
                 print(f"    Command: {cmd}")
                 continue
         # ================================================================
 
-        # 5. Evaluation (Calculate BLEU)
-        # 평가를 위한 Reference File 결정 (dataset.py의 로직과 일치해야 함)
-        # dataset.py는 무조건 'base' 폴더를 보고, 방향만 바꿈.
-        # En->De : Target is German (.de)
-        # De->En : Target is English (.en)
-        is_deen = 'deen' in config['dataset']
-        tgt_ext = 'en' if is_deen else 'de'
-        
-        # Reference file path: data/wmt14_vocab50k/base/test.{de|en} or data/wmt15_vocab50k/base/test.{de|en}
-        is_wmt15 = 'wmt15' in config['dataset'].lower()
-        dataset_name = 'wmt15' if is_wmt15 else 'wmt14'
-        ref_file = f"data/{dataset_name}_vocab50k/base/test.{tgt_ext}"
-        
-        # 평가 로그 파일 (evaluation은 여전히 파일로 저장)
-        eval_log_file = os.path.join(save_path, "eval.log")
-        
-        # BLEU 계산 명령어
-        # calculate_bleu.py가 --model-path 디렉토리 내의 epoch에 맞는 모델을 로드한다고 가정
-        # max_epochs 값을 epoch 인자로 전달
-        eval_cmd = f"python calculate_bleu.py --model-path {save_path} --reference-path {ref_file} --epoch {config['args']['max_epochs']}" + common_flags
-        
-        print(f"Evaluating BLEU... Logs: {eval_log_file}")
-        try:
-            run_command(eval_cmd, log_path=eval_log_file)  # ← evaluation은 파일로 저장
-            
-            # 결과 출력 (로그 파일의 마지막 줄에 BLEU 점수가 있다고 가정)
-            with open(eval_log_file, 'r') as f:
-                lines = f.readlines()
-                if lines: 
-                    print(f"Result [{exp_name}]: {lines[-1].strip()}")
-                else:
-                    print("Warning: Eval log is empty.")
-                    
-        except subprocess.CalledProcessError:
-            print(f"Evaluation failed for {exp_name}. Check logs at {eval_log_file}")
-        except Exception as e:
-            print(f"An unexpected error occurred during evaluation: {e}")
+        # 5. Final Evaluation Summary
+        print(f"\n>>> BLEU scores logged to: {bleu_log_file}")
+        if os.path.exists(bleu_log_file):
+            print("\n=== BLEU Score Summary ===")
+            with open(bleu_log_file, 'r') as f:
+                print(f.read())
 
 
 if __name__ == "__main__":
