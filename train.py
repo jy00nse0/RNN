@@ -54,7 +54,7 @@ def parse_args():
                        help='Epoch after which to start halving learning rate. (Base: 5, Dropout: 8)')
     
     # ===== Training Configuration =====
-    parser.add_argument('--train-embeddings', action='store_true',
+    parser.add_argument('--train-embeddings', action='store_true', default=True, 
                        help='Should gradients be propagated to word embeddings.')
     parser.add_argument('--embedding-type', type=str, default=None)
     parser.add_argument('--save-path', default='.save',
@@ -66,7 +66,7 @@ def parse_args():
                                'twitter-spotifycares', 'twitter-uber_support', 'twitter-all',
                                'twitter-small', 'wmt14-en-de', 'wmt15-deen', 'sample100k'],
                        help='Dataset for training model.')
-    parser.add_argument('--teacher-forcing-ratio', type=float, default=1.0,
+    parser.add_argument('--teacher-forcing-ratio', type=float, default=0.0,
                        help='Teacher forcing ratio used in seq2seq models. [0-1]')
     
     # [Paper] Experimental Setup
@@ -77,18 +77,18 @@ def parse_args():
     gpu_args = parser.add_argument_group('GPU', 'GPU related settings.')
     gpu_args.add_argument('--cuda', action='store_true', default=True, 
                          help='Use cuda if available.')
-    gpu_args.add_argument('--multi-gpu', action='store_true', default=True, 
+    gpu_args.add_argument('--multi-gpu', action='store_true', default=False, 
                          help='Use multiple GPUs if available.')
     
     # ===== [OPTIMIZED] Performance Options =====
     perf_args = parser.add_argument_group('Performance', 'Performance optimization settings.')
-    perf_args.add_argument('--num-workers', type=int, default=32,
+    perf_args.add_argument('--num-workers', type=int, default=12,
                           help='Number of DataLoader workers (0=single process, 4-8 recommended).')
-    perf_args.add_argument('--amp', action='store_true', default= True,
+    perf_args.add_argument('--amp', action='store_true', default= False,
                           help='Use Automatic Mixed Precision (1.5-2x faster but may affect reproducibility).')
 
     # ===== Embedding Hyperparameters =====
-    parser.add_argument('--embedding-size', type=int, default=None, 
+    parser.add_argument('--embedding-size', type=int, default=1000, 
                        help='Embedding size.')
     
     # ===== Encoder Hyperparameters =====
@@ -122,7 +122,7 @@ def parse_args():
                              help='Whether Luong decoder should use input feeding approach.')
     decoder_args.add_argument('--decoder-init-type', 
                              choices=['zeros', 'bahdanau', 'adjust_pad', 'adjust_all'],
-                             default='zeros', 
+                             default='adjust_pad', 
                              help='Decoder initial RNN hidden state initialization.')
 
     # ===== Attention Hyperparameters =====
@@ -153,6 +153,7 @@ def parse_args():
 
     print(args)
     return args
+
 
 
 def batch_reverse_source(src_tensor, pad_idx, batch_first=False):
