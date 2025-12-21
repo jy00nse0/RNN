@@ -1,4 +1,5 @@
 import torch
+from model.seq2seq.embeddings import embeddings_factory
 from model.seq2seq.encoder import encoder_factory
 from model.seq2seq.decoder import decoder_factory
 from model.seq2seq.model import Seq2SeqTrain, Seq2SeqPredict
@@ -6,8 +7,13 @@ from collections import OrderedDict
 
 
 def train_model_factory(args, metadata):
-    encoder = encoder_factory(args, metadata)
-    decoder = decoder_factory(args, metadata)
+    # Create shared embedding once (for both encoder and decoder)
+    shared_embed = embeddings_factory(args, metadata)
+    
+    # Pass the same embedding to both encoder and decoder
+    encoder = encoder_factory(args, metadata, embed=shared_embed)
+    decoder = decoder_factory(args, metadata, embed=shared_embed)
+    
     return Seq2SeqTrain(encoder, decoder, metadata.vocab_size, teacher_forcing_ratio=args.teacher_forcing_ratio)
 
 

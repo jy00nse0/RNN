@@ -5,8 +5,9 @@ from abc import ABC, abstractmethod
 from .embeddings import embeddings_factory
 
 
-def encoder_factory(args, metadata):
-    embed = embeddings_factory(args, metadata)
+def encoder_factory(args, metadata, embed=None):
+    if embed is None:
+        embed = embeddings_factory(args, metadata)
     return SimpleEncoder(
         rnn_cls=getattr(nn, args.encoder_rnn_cell),
         embed=embed,
