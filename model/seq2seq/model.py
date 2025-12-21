@@ -51,6 +51,41 @@ class Seq2SeqTrain(nn.Module):
                 input_word = argmax  
 
         return outputs
+    
+    def greedy_decode(self, question, max_len=50, sos_idx=1, eos_idx=2):
+        """
+        Greedy decoding for sample generation during training monitoring.
+        
+        Args:
+            question: Input tensor (seq_len, batch_size)
+            max_len: Maximum length of generated sequence
+            sos_idx: Start-of-sequence token index (default: 1)
+            eos_idx: End-of-sequence token index (default: 2)
+            
+        Returns:
+            Generated sequences (seq_len, batch_size)
+        """
+        batch_size = question.size(1)
+        device = question.device
+        
+        # Encode input
+        encoder_outputs, h_n = self.encoder(question)
+        
+        # Initialize with SOS token
+        input_word = torch.tensor([sos_idx] * batch_size, device=device)
+        sequences = []
+        
+        kwargs = {}
+        for t in range(max_len):
+            output, attn_weights, kwargs = self.decoder(t, input_word, encoder_outputs, h_n, **kwargs)
+            _, argmax = output.max(dim=1)  # Greedy selection
+            input_word = argmax
+            sequences.append(argmax.unsqueeze(0))
+        
+        # Stack sequences
+        sequences = torch.cat(sequences, dim=0)  # (max_len, batch_size)
+        
+        return sequences
 
 class Seq2SeqPredict(nn.Module):
     """
