@@ -46,7 +46,7 @@ def monitor_gradients(model):
     total_norm = 0.0
     grad_stats = {
         'max_grad': 0.0,
-        'min_grad': 0.0,  # Initialize to 0.0 instead of inf
+        'min_grad': float('inf'),  # Use inf to track actual minimum
         'nan_count': 0,
         'inf_count': 0,
         'zero_count': 0
@@ -60,15 +60,14 @@ def monitor_gradients(model):
             total_norm += param_norm.item() ** 2
             
             grad_stats['max_grad'] = max(grad_stats['max_grad'], p.grad.abs().max().item())
-            # Only update min_grad if we have gradients
-            current_min = p.grad.abs().min().item()
-            if grad_stats['min_grad'] == 0.0:
-                grad_stats['min_grad'] = current_min
-            else:
-                grad_stats['min_grad'] = min(grad_stats['min_grad'], current_min)
+            grad_stats['min_grad'] = min(grad_stats['min_grad'], p.grad.abs().min().item())
             grad_stats['nan_count'] += torch.isnan(p.grad).sum().item()
             grad_stats['inf_count'] += torch.isinf(p.grad).sum().item()
             grad_stats['zero_count'] += (p.grad == 0).sum().item()
+    
+    # If no gradients were found, set min to 0
+    if not has_grads or grad_stats['min_grad'] == float('inf'):
+        grad_stats['min_grad'] = 0.0
     
     grad_stats['total_norm'] = total_norm ** 0.5
     return grad_stats
@@ -88,11 +87,12 @@ class LossMonitor:
     
     def is_spiking(self):
         """Check if loss has spiked suddenly"""
-        if len(self.losses) < 2:
+        if len(self.losses) < 4:  # Need at least 4 losses to compare meaningfully
             return False
         
-        recent_avg = sum(self.losses[-3:]) / min(3, len(self.losses))
-        older_avg = sum(self.losses[:-3]) / max(1, len(self.losses) - 3)
+        # Compare recent 3 losses to older losses
+        recent_avg = sum(self.losses[-3:]) / 3
+        older_avg = sum(self.losses[:-3]) / len(self.losses[:-3])
         
         if older_avg > 0:
             spike_ratio = recent_avg / older_avg
