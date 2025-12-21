@@ -66,6 +66,8 @@ def evaluate(model, test_iter, metadata, device):
             logits = model(question, answer)
             
             # Calculate cross-entropy loss
+            # Note: answer[1:] skips the <sos> token since the model predicts
+            # starting from the first actual token (teacher forcing during training)
             loss = F.cross_entropy(
                 logits.reshape(-1, metadata.vocab_size),
                 answer[1:].reshape(-1),
