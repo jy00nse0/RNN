@@ -97,7 +97,7 @@ class Seq2SeqPredict(nn.Module):
             seq += tok
         return seq.strip()
 
-    def forward(self, questions, sampling_strategy, max_seq_len):
+    def forward(self, questions, sampling_strategy, max_seq_len, return_attention=False):
         # raw strings to tensor
         q = self.field.process([self.field.preprocess(question) for question in questions])
         
@@ -109,8 +109,14 @@ class Seq2SeqPredict(nn.Module):
         encoder_outputs, h_n = self.encoder(q)
 
         # sample output sequence
-        sequences, lengths = self.samplers[sampling_strategy].sample(encoder_outputs, h_n, self.decoder, self.sos_idx,
-                                                                     self.eos_idx, max_seq_len)
+        sample_result = self.samplers[sampling_strategy].sample(encoder_outputs, h_n, self.decoder, self.sos_idx,
+                                                                 self.eos_idx, max_seq_len, return_attention=return_attention)
+        
+        if return_attention:
+            sequences, lengths, attention_weights = sample_result
+        else:
+            sequences, lengths = sample_result
+            attention_weights = None
 
         # torch tensors -> python lists
         batch_size = sequences.size(0)
@@ -122,4 +128,6 @@ class Seq2SeqPredict(nn.Module):
             seq = sequences[batch][:lengths[batch]]
             seqs.append(self.decode_sequence(seq))
 
+        if return_attention:
+            return seqs, attention_weights
         return seqs
