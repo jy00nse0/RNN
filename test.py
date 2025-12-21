@@ -256,25 +256,6 @@ experiments = {
 # ============================================================
 # 3. Execution Engine (copied, with CLI selection added)
 # ============================================================
-def get_latest_model_dir(base_path):
-    """
-    Find the most recent timestamped subdirectory under base_path.
-    train.py creates directories with format YYYY-MM-DD-HH:MM
-    """
-    if not os.path.exists(base_path):
-        raise FileNotFoundError(f"Base path not found: {base_path}")
-    
-    subdirs = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
-    
-    if not subdirs:
-        raise FileNotFoundError(f"No subdirectories found in {base_path}")
-    
-    # Sort by name (timestamp format naturally sorts correctly)
-    subdirs.sort(reverse=True)
-    latest_dir = os.path.join(base_path, subdirs[0])
-    
-    return latest_dir
-
 def run_command(cmd, log_path):
     print(f"[Exec] {cmd}")
     # 로그 파일 디렉토리 생성
@@ -475,23 +456,13 @@ def main():
         dataset_name = 'wmt15' if is_wmt15 else 'wmt14'
         ref_file = f"data/{dataset_name}_vocab50k/base/test.{tgt_ext}"
         
-        # Determine the actual model directory (handle timestamped subdirectories)
-        model_path_for_eval = save_path
-        if not os.path.exists(os.path.join(model_path_for_eval, 'args')):
-            try:
-                model_path_for_eval = get_latest_model_dir(save_path)
-                print(f"Using nested model dir for evaluation: {model_path_for_eval}")
-            except FileNotFoundError:
-                print(f"Error: Cannot find 'args' under {save_path} or any subdir. Skipping evaluation.")
-                continue
-        
         # 평가 로그 파일
         eval_log_file = os.path.join(save_path, "eval.log")
         
         # BLEU 계산 명령어
         # calculate_bleu.py가 --model-path 디렉토리 내의 epoch에 맞는 모델을 로드한다고 가정
         # max_epochs 값을 epoch 인자로 전달
-        eval_cmd = f"python calculate_bleu.py --model-path {model_path_for_eval} --reference-path {ref_file} --epoch {config['args']['max_epochs']}" + common_flags
+        eval_cmd = f"python calculate_bleu.py --model-path {save_path} --reference-path {ref_file} --epoch {config['args']['max_epochs']}" + common_flags
         
         print(f"Evaluating BLEU... Logs: {eval_log_file}")
         try:
