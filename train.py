@@ -14,7 +14,6 @@ from serialization import save_object, save_model, save_vocab
 from datetime import datetime
 from util import embedding_size_from_name
 from tqdm import tqdm
-import math
 
 """
 [Optimized] train.py for RNN Paper Reproduction
@@ -32,194 +31,7 @@ New Optimizations:
 3. DataLoader workers configuration
 4. zero_grad(set_to_none=True) for better performance
 5. TF32 and cuDNN benchmarking enabled
-
-Real-time Monitoring:
-1. Gradient monitoring (norm, NaN, Inf, extrema)
-2. Loss monitoring (spikes, divergence)
-3. Activation monitoring (hidden states, attention)
-4. Sample generation checks
 """
-
-
-def monitor_gradients(model):
-    """Calculate gradient statistics to detect training collapse"""
-    total_norm = 0.0
-    grad_stats = {
-        'max_grad': 0.0,
-        'min_grad': float('inf'),  # Use inf to track actual minimum
-        'nan_count': 0,
-        'inf_count': 0,
-        'zero_count': 0
-    }
-    
-    has_grads = False
-    for p in model.parameters():
-        if p.grad is not None:
-            has_grads = True
-            param_norm = p.grad.data.norm(2)
-            total_norm += param_norm.item() ** 2
-            
-            grad_stats['max_grad'] = max(grad_stats['max_grad'], p.grad.abs().max().item())
-            grad_stats['min_grad'] = min(grad_stats['min_grad'], p.grad.abs().min().item())
-            grad_stats['nan_count'] += torch.isnan(p.grad).sum().item()
-            grad_stats['inf_count'] += torch.isinf(p.grad).sum().item()
-            grad_stats['zero_count'] += (p.grad == 0).sum().item()
-    
-    # If no gradients were found, set min to 0
-    if not has_grads or grad_stats['min_grad'] == float('inf'):
-        grad_stats['min_grad'] = 0.0
-    
-    grad_stats['total_norm'] = total_norm ** 0.5
-    return grad_stats
-
-
-class LossMonitor:
-    """Detect sudden changes in loss"""
-    def __init__(self, window_size=10, spike_threshold=3.0):
-        self.losses = []
-        self.window_size = window_size
-        self.spike_threshold = spike_threshold
-    
-    def add(self, loss):
-        self.losses.append(loss)
-        if len(self.losses) > self.window_size:
-            self.losses.pop(0)
-    
-    def is_spiking(self):
-        """Check if loss has spiked suddenly"""
-        if len(self.losses) < 4:  # Need at least 4 losses to compare meaningfully
-            return False
-        
-        # Compare recent 3 losses to older losses
-        recent_avg = sum(self.losses[-3:]) / 3
-        older_avg = sum(self.losses[:-3]) / len(self.losses[:-3])
-        
-        if older_avg > 0:
-            spike_ratio = recent_avg / older_avg
-            return spike_ratio > self.spike_threshold
-        return False
-    
-    def is_diverging(self):
-        """Check if loss is diverging"""
-        if len(self.losses) < self.window_size:
-            return False
-        
-        # Check last window_size losses for continuous increase
-        start_idx = max(0, len(self.losses) - self.window_size)
-        increasing = all(self.losses[i] < self.losses[i+1] 
-                        for i in range(start_idx, len(self.losses) - 1))
-        return increasing
-
-
-def calculate_perplexity(loss):
-    """Convert loss to perplexity for more intuitive interpretation"""
-    # Clamp loss to prevent overflow (exp(700) is near float max)
-    clamped_loss = min(loss, 100.0)  # Perplexity > e^100 is not meaningful anyway
-    try:
-        return math.exp(clamped_loss)
-    except OverflowError:
-        return float('inf')
-
-
-class ActivationMonitor:
-    """Monitor RNN hidden states and attention weights"""
-    def __init__(self):
-        self.stats = {}
-        self.hooks = []  # Store hook handles for cleanup
-    
-    def register_hooks(self, model):
-        """Register forward hooks on model"""
-        def hook_fn(name):
-            def hook(module, input, output):
-                if isinstance(output, tuple):
-                    output = output[0]
-                
-                self.stats[name] = {
-                    'mean': output.mean().item(),
-                    'std': output.std().item(),
-                    'max': output.max().item(),
-                    'min': output.min().item(),
-                    'nan_count': torch.isnan(output).sum().item(),
-                    'inf_count': torch.isinf(output).sum().item(),
-                }
-            return hook
-        
-        for name, module in model.named_modules():
-            if isinstance(module, (nn.LSTM, nn.GRU)):
-                handle = module.register_forward_hook(hook_fn(name))
-                self.hooks.append(handle)
-    
-    def remove_hooks(self):
-        """Remove all registered hooks"""
-        for handle in self.hooks:
-            handle.remove()
-        self.hooks.clear()
-    
-    def check_anomalies(self):
-        """Detect anomalies in activation values"""
-        warnings = []
-        for name, stat in self.stats.items():
-            if stat['nan_count'] > 0:
-                warnings.append(f"⚠️  {name}: NaN detected!")
-            if stat['inf_count'] > 0:
-                warnings.append(f"⚠️  {name}: Inf detected!")
-            if abs(stat['mean']) > 100:
-                warnings.append(f"⚠️  {name}: Large mean ({stat['mean']:.2f})")
-            if stat['std'] < 1e-5:
-                warnings.append(f"⚠️  {name}: Dying activations (std={stat['std']:.2e})")
-        return warnings
-
-
-def sample_generation(model, val_iter, metadata, reverse_src=False, num_samples=3):
-    """Check actual generation results to detect collapse"""
-    model.eval()
-    
-    try:
-        batch = next(iter(val_iter))
-    except StopIteration:
-        print("\n⚠️  Validation iterator is empty. Skipping sample generation.")
-        return
-    
-    with torch.no_grad():
-        question, answer = batch.question[:, :num_samples], batch.answer[:, :num_samples]
-        
-        # Check if model has greedy_decode method
-        if hasattr(model, 'module'):
-            actual_model = model.module
-        else:
-            actual_model = model
-            
-        if not hasattr(actual_model, 'greedy_decode'):
-            print("\n⚠️  Model does not have greedy_decode method. Skipping sample generation.")
-            return
-        
-        # Greedy decoding
-        output = actual_model.greedy_decode(question, max_len=50)
-        
-        print("\n" + "="*70)
-        print("Sample Generations:")
-        print("="*70)
-        
-        for i in range(num_samples):
-            src = [metadata.vocab.itos[idx] for idx in question[:, i].cpu().numpy() if idx != metadata.padding_idx]
-            tgt = [metadata.vocab.itos[idx] for idx in answer[:, i].cpu().numpy() if idx != metadata.padding_idx]
-            out = [metadata.vocab.itos[idx] for idx in output[:, i].cpu().numpy() if idx != metadata.padding_idx]
-            
-            print(f"\nSample {i+1}:")
-            print(f"  Input:   {' '.join(src)}")
-            print(f"  Target:  {' '.join(tgt)}")
-            print(f"  Output:  {' '.join(out)}")
-            
-            # Check for repetitive output (only if output has at least 3 tokens)
-            if len(out) >= 3 and len(set(out)) < 3:
-                print(f"  ⚠️  WARNING: Repetitive output detected!")
-            
-            # Check for same-token repetition (only if output is not empty)
-            if len(out) > 0 and all(w == out[0] for w in out):
-                print(f"  🚨 CRITICAL: Model generating same token!")
-        
-        print("="*70)
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Script for training seq2seq chatbot.')
@@ -434,21 +246,15 @@ def evaluate(model, val_iter, metadata, reverse_src=False):
 
 
 def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False, 
-          use_amp=False, scaler=None, epoch=0):
+          use_amp=False, scaler=None):
     """
-    [OPTIMIZED] Train model for one epoch with real-time monitoring.
+    [OPTIMIZED] Train model for one epoch.
     
     Optimizations:
     - AMP (Mixed Precision) support
     - reshape() instead of view()
     - zero_grad(set_to_none=True) for better memory efficiency
     - TF32 and cuDNN benchmarking enabled
-    
-    Real-time Monitoring:
-    - Gradient monitoring (norm, NaN, Inf)
-    - Loss monitoring (spikes, divergence)
-    - Activation monitoring (every 100 batches)
-    - Batch-level statistics (every 100 batches)
     
     Args:
         model: Neural network model
@@ -459,7 +265,6 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
         reverse_src: Whether to reverse source sequences
         use_amp: Whether to use automatic mixed precision
         scaler: GradScaler for AMP (required if use_amp=True)
-        epoch: Current epoch number (for logging)
     
     Returns:
         Average training loss for the epoch
@@ -470,18 +275,9 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
     torch.backends.cudnn.allow_tf32 = True
     
     model.train()
-    
-    # Initialize monitoring tools
-    loss_monitor = LossMonitor(window_size=10, spike_threshold=3.0)
-    activation_monitor = ActivationMonitor()
-    activation_monitor.register_hooks(model)
-    
     total_loss = 0
-    batch_losses = []
-    grad_norms = []
-    batch_idx = 0
     
-    for batch in tqdm(train_iter, desc=f"Training Epoch {epoch + 1}", leave=False):
+    for batch in tqdm(train_iter, desc="Training", leave=False):
         question, answer = batch.question, batch.answer
         
         # [Feature] Reverse Source if flag is set
@@ -498,14 +294,6 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
                 answer[1:].reshape(-1),
                 ignore_index=metadata.padding_idx
             )
-        
-        # Critical: Check for NaN/Inf in loss
-        if torch.isnan(loss) or torch.isinf(loss):
-            raise ValueError(f"🚨 TRAINING COLLAPSED: Loss is {loss.item()} at batch {batch_idx}")
-        
-        # Add loss to monitor
-        loss_monitor.add(loss.item())
-        batch_losses.append(loss.item())
         
         # [OPTIMIZED] AMP-aware backward and optimizer step
         if use_amp:
@@ -529,59 +317,9 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
             clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
         
-        # Monitor gradients (every batch for immediate NaN/Inf detection)
-        # Note: This is intentional per requirements - critical failures must be caught immediately
-        grad_stats = monitor_gradients(model)
-        grad_norms.append(grad_stats['total_norm'])
-        
-        # Critical: Check for NaN/Inf in gradients
-        if grad_stats['nan_count'] > 0:
-            raise ValueError(f"🚨 TRAINING COLLAPSED: NaN gradients detected at batch {batch_idx}")
-        if grad_stats['inf_count'] > 0:
-            raise ValueError(f"🚨 TRAINING COLLAPSED: Inf gradients detected at batch {batch_idx}")
-        
-        # Check for loss spikes
-        if loss_monitor.is_spiking():
-            print(f"\n⚠️  WARNING: Loss spike detected at batch {batch_idx}")
-            print(f"   Recent losses: {[f'{l:.2f}' for l in loss_monitor.losses[-5:]]}")
-        
-        # Check for loss divergence
-        if loss_monitor.is_diverging():
-            print(f"\n⚠️  WARNING: Loss diverging at batch {batch_idx}")
-            print(f"   Recent losses: {[f'{l:.2f}' for l in loss_monitor.losses[-5:]]}")
-        
-        # Print detailed statistics every 100 batches
-        if (batch_idx + 1) % 100 == 0:
-            perplexity = calculate_perplexity(loss.item())
-            print(f"\n[Batch {batch_idx + 1}] Loss: {loss.item():.4f} | PPL: {perplexity:.2f} | Grad: {grad_stats['total_norm']:.4f}")
-            
-            # Check activation anomalies every 100 batches
-            warnings = activation_monitor.check_anomalies()
-            if warnings:
-                print("Activation Warnings:")
-                for warning in warnings:
-                    print(f"  {warning}")
-        
         total_loss += loss.item()
-        batch_idx += 1
     
-    # Print epoch summary
-    avg_loss = total_loss / len(train_iter)
-    avg_perplexity = calculate_perplexity(avg_loss)
-    avg_grad_norm = sum(grad_norms) / len(grad_norms) if grad_norms else 0
-    min_loss = min(batch_losses) if batch_losses else 0
-    max_loss = max(batch_losses) if batch_losses else 0
-    
-    print(f"\n[Epoch {epoch + 1} Summary]")
-    print(f"  Avg Loss: {avg_loss:.4f}")
-    print(f"  Perplexity: {avg_perplexity:.2f}")
-    print(f"  Avg Gradient Norm: {avg_grad_norm:.4f}")
-    print(f"  Loss Range: [{min_loss:.4f}, {max_loss:.4f}]")
-    
-    # Clean up hooks to prevent memory accumulation
-    activation_monitor.remove_hooks()
-    
-    return avg_loss
+    return total_loss / len(train_iter)
 
 
 def adjust_learning_rate(optimizer, epoch, decay_start):
@@ -680,7 +418,7 @@ def main():
             if epoch > args.lr_decay_start:
                 adjust_learning_rate(optimizer, epoch, args.lr_decay_start)
 
-            # Train for one epoch with monitoring
+            # Train for one epoch
             train_loss = train(
                 model=model,
                 optimizer=optimizer,
@@ -689,8 +427,7 @@ def main():
                 grad_clip=args.gradient_clip,
                 reverse_src=args.reverse,
                 use_amp=use_amp,
-                scaler=scaler,
-                epoch=epoch
+                scaler=scaler
             )
             
             # Evaluate on validation set
@@ -717,17 +454,6 @@ def main():
             
             print()  # New line
             
-            # Sample generation check after evaluation
-            sample_generation(model, val_iter, metadata, reverse_src=args.reverse, num_samples=3)
-            
-    except ValueError as e:
-        # Training collapse detected
-        print(f"\n{'='*70}")
-        print(f"TRAINING STOPPED DUE TO COLLAPSE")
-        print(f"{'='*70}")
-        print(f"Error: {e}")
-        print(f"{'='*70}")
-        raise
     except (KeyboardInterrupt, BrokenPipeError):
         print('\n[Ctrl-C] Training stopped by user.')
 
