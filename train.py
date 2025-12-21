@@ -46,19 +46,26 @@ def monitor_gradients(model):
     total_norm = 0.0
     grad_stats = {
         'max_grad': 0.0,
-        'min_grad': float('inf'),
+        'min_grad': 0.0,  # Initialize to 0.0 instead of inf
         'nan_count': 0,
         'inf_count': 0,
         'zero_count': 0
     }
     
+    has_grads = False
     for p in model.parameters():
         if p.grad is not None:
+            has_grads = True
             param_norm = p.grad.data.norm(2)
             total_norm += param_norm.item() ** 2
             
             grad_stats['max_grad'] = max(grad_stats['max_grad'], p.grad.abs().max().item())
-            grad_stats['min_grad'] = min(grad_stats['min_grad'], p.grad.abs().min().item())
+            # Only update min_grad if we have gradients
+            current_min = p.grad.abs().min().item()
+            if grad_stats['min_grad'] == 0.0:
+                grad_stats['min_grad'] = current_min
+            else:
+                grad_stats['min_grad'] = min(grad_stats['min_grad'], current_min)
             grad_stats['nan_count'] += torch.isnan(p.grad).sum().item()
             grad_stats['inf_count'] += torch.isinf(p.grad).sum().item()
             grad_stats['zero_count'] += (p.grad == 0).sum().item()
@@ -97,14 +104,20 @@ class LossMonitor:
         if len(self.losses) < self.window_size:
             return False
         
+        # Check last window_size losses for continuous increase
         increasing = all(self.losses[i] < self.losses[i+1] 
-                        for i in range(-self.window_size, -1))
+                        for i in range(len(self.losses) - self.window_size, len(self.losses) - 1))
         return increasing
 
 
 def calculate_perplexity(loss):
     """Convert loss to perplexity for more intuitive interpretation"""
-    return math.exp(loss)
+    # Clamp loss to prevent overflow (exp(700) is near float max)
+    clamped_loss = min(loss, 100.0)  # Perplexity > e^100 is not meaningful anyway
+    try:
+        return math.exp(clamped_loss)
+    except OverflowError:
+        return float('inf')
 
 
 class ActivationMonitor:

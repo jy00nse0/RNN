@@ -77,12 +77,25 @@ class Seq2SeqTrain(nn.Module):
         # Pre-allocate output tensor for efficiency
         sequences = torch.zeros(max_len, batch_size, dtype=torch.long, device=device)
         
+        # Track which sequences have finished
+        finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
+        
         kwargs = {}
         for t in range(max_len):
             output, attn_weights, kwargs = self.decoder(t, input_word, encoder_outputs, h_n, **kwargs)
             _, argmax = output.max(dim=1)  # Greedy selection
+            
+            # Only update unfinished sequences
+            sequences[t] = torch.where(finished, eos_idx, argmax)
+            
+            # Update finished status
+            finished = finished | (argmax == eos_idx)
+            
+            # Early stopping if all sequences have generated EOS
+            if finished.all():
+                break
+            
             input_word = argmax
-            sequences[t] = argmax
         
         return sequences
 
