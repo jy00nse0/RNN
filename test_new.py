@@ -109,6 +109,7 @@ experiments = {
 
     # [Row 7] + Local-p (General) + Feed + Unk Replace
     # 학습 설정은 Row 6와 동일하며, 평가 시 UNK Replacement 수행 (Post-process)
+    # [Row 7] + Local-p (General) + Feed + Unk Replace -> 실험 수행 안하고 row 6에 unk replace 만 해서 다시 테스트
     "T1_LocalP_General_Feed_Unk": {
         "dataset":  "wmt14-en-de",
         "args": {**COMMON, "max_epochs":  EPOCHS_DR, "lr_decay_start": DECAY_DR,
@@ -146,7 +147,6 @@ experiments = {
         "args": {**COMMON, "max_epochs":  EPOCHS_BASE, "lr_decay_start": DECAY_BASE,
                  "encoder_rnn_dropout": 0.0, "decoder_rnn_dropout": 0.0,
                  "attention_type": "global", "attention_score": "location",
-                 "luong_input_feed": True,
                  "reverse": True}
     },
 
