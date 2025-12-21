@@ -85,8 +85,8 @@ class Seq2SeqTrain(nn.Module):
             output, attn_weights, kwargs = self.decoder(t, input_word, encoder_outputs, h_n, **kwargs)
             _, argmax = output.max(dim=1)  # Greedy selection
             
-            # Only update unfinished sequences
-            sequences[t] = torch.where(finished, eos_idx, argmax)
+            # Store the generated token (keep already generated tokens for finished sequences)
+            sequences[t] = argmax
             
             # Update finished status
             finished = finished | (argmax == eos_idx)
@@ -95,6 +95,7 @@ class Seq2SeqTrain(nn.Module):
             if finished.all():
                 break
             
+            # Continue decoding with the current prediction
             input_word = argmax
         
         return sequences

@@ -105,8 +105,9 @@ class LossMonitor:
             return False
         
         # Check last window_size losses for continuous increase
+        start_idx = max(0, len(self.losses) - self.window_size)
         increasing = all(self.losses[i] < self.losses[i+1] 
-                        for i in range(len(self.losses) - self.window_size, len(self.losses) - 1))
+                        for i in range(start_idx, len(self.losses) - 1))
         return increasing
 
 
@@ -124,6 +125,7 @@ class ActivationMonitor:
     """Monitor RNN hidden states and attention weights"""
     def __init__(self):
         self.stats = {}
+        self.hooks = []  # Store hook handles for cleanup
     
     def register_hooks(self, model):
         """Register forward hooks on model"""
@@ -144,7 +146,14 @@ class ActivationMonitor:
         
         for name, module in model.named_modules():
             if isinstance(module, (nn.LSTM, nn.GRU)):
-                module.register_forward_hook(hook_fn(name))
+                handle = module.register_forward_hook(hook_fn(name))
+                self.hooks.append(handle)
+    
+    def remove_hooks(self):
+        """Remove all registered hooks"""
+        for handle in self.hooks:
+            handle.remove()
+        self.hooks.clear()
     
     def check_anomalies(self):
         """Detect anomalies in activation values"""
@@ -520,7 +529,8 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
             clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
         
-        # Monitor gradients
+        # Monitor gradients (every batch for immediate NaN/Inf detection)
+        # Note: This is intentional per requirements - critical failures must be caught immediately
         grad_stats = monitor_gradients(model)
         grad_norms.append(grad_stats['total_norm'])
         
@@ -567,6 +577,9 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
     print(f"  Perplexity: {avg_perplexity:.2f}")
     print(f"  Avg Gradient Norm: {avg_grad_norm:.4f}")
     print(f"  Loss Range: [{min_loss:.4f}, {max_loss:.4f}]")
+    
+    # Clean up hooks to prevent memory accumulation
+    activation_monitor.remove_hooks()
     
     return avg_loss
 
