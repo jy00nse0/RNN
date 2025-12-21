@@ -4,6 +4,10 @@ import subprocess
 import torch
 import sys
 import argparse
+import math
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 '''
 사용 가능한 실험 목록 출력 명령: 
 python test. py --list
@@ -309,6 +313,55 @@ def find_latest_checkpoint(save_path):
     return os.path.join(save_path, latest_file), latest_epoch
 
 
+def evaluate_ppl(save_path, dataset_name, epoch, common_flags):
+    """
+    Calculate Perplexity (PPL) for a specific epoch by evaluating test loss.
+    
+    Args:
+        save_path: Path to model checkpoint directory
+        dataset_name: Dataset name (e.g., 'wmt14-en-de')
+        epoch: Epoch number to evaluate
+        common_flags: Common flags (e.g., --cuda)
+    
+    Returns:
+        PPL as float, or None if evaluation failed
+    """
+    eval_cmd = f"python calculate_ppl.py --model-path {save_path} --epoch {epoch} --dataset {dataset_name}" + common_flags
+    
+    try:
+        # Run evaluation and capture output
+        result = subprocess.run(
+            eval_cmd, 
+            shell=True, 
+            capture_output=True, 
+            text=True, 
+            check=True
+        )
+        
+        # Parse PPL from output
+        output_lines = result.stdout.strip().split('\n')
+        for line in output_lines:
+            if 'PPL' in line and '=' in line:
+                # Format: "PPL = 123.45"
+                parts = line.split('=')
+                if len(parts) >= 2:
+                    try:
+                        ppl_score = float(parts[-1].strip())
+                        return ppl_score
+                    except (ValueError, IndexError):
+                        pass
+        
+        # If we can't parse, return None
+        return None
+        
+    except subprocess.CalledProcessError as e:
+        print(f"PPL evaluation failed for epoch {epoch}: {e}")
+        return None
+    except Exception as e:
+        print(f"Unexpected error during PPL evaluation: {e}")
+        return None
+
+
 def evaluate_bleu(save_path, ref_file, epoch, common_flags):
     """
     Calculate BLEU score for a specific epoch.
@@ -459,6 +512,14 @@ def main():
         # 2. 이미 학습 완료된 경우 스킵
         if completed_epochs >= max_epochs:
             print(f"Training already completed ({completed_epochs}/{max_epochs} epochs). Skipping.")
+            # Evaluate PPL for the final epoch if training is already done
+            print(f">>> Evaluating PPL for final Epoch {max_epochs}...")
+            ppl_score = evaluate_ppl(save_path, config['dataset'], max_epochs, common_flags)
+            if ppl_score is not None:
+                print(f"    PPL = {ppl_score:.4f}")
+                # Append to log file
+                with open(bleu_log_file, 'a') as bleu_log:
+                    bleu_log.write(f"Final Epoch {max_epochs}: PPL = {ppl_score:.4f}\n")
         else:
             # 3. 학습 명령 구성
             cmd = f"python train.py --dataset {config['dataset']} --save-path {save_path}" + common_flags + " --amp --num-workers 64"
@@ -506,9 +567,18 @@ def main():
                         print(f">>> Evaluating BLEU for Epoch {epoch}...")
                         bleu_score = evaluate_bleu(save_path, ref_file, epoch, common_flags)
                         
+                        # Evaluate PPL for the last epoch
+                        ppl_score = None
+                        if epoch == max_epochs:
+                            print(f">>> Evaluating PPL for Epoch {epoch} (final epoch)...")
+                            ppl_score = evaluate_ppl(save_path, config['dataset'], epoch, common_flags)
+                        
                         # Log result
                         if bleu_score is not None: 
-                            log_line = f"Epoch {epoch: 2d}:  BLEU = {bleu_score}\n"
+                            if ppl_score is not None:
+                                log_line = f"Epoch {epoch: 2d}:  BLEU = {bleu_score}, PPL = {ppl_score:.4f}\n"
+                            else:
+                                log_line = f"Epoch {epoch: 2d}:  BLEU = {bleu_score}\n"
                             print(f"    {log_line. strip()}")
                             bleu_log.write(log_line)
                             bleu_log. flush()
