@@ -41,7 +41,8 @@ def unk_replace(hypothesis, source, attention_weights, unk_token='<unk>', dictio
         return hypothesis
     
     # Convert attention weights to numpy for easier manipulation
-    if isinstance(attention_weights, torch.Tensor):
+    if hasattr(attention_weights, 'cpu'):
+        # torch tensor - convert to numpy
         attention_weights = attention_weights.cpu().numpy()
     
     # Process each token in hypothesis
