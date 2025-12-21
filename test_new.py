@@ -33,7 +33,7 @@ COMMON = {
     "encoder_num_layers": 4, "decoder_num_layers":  4,
     "encoder_hidden_size": 1000, "decoder_hidden_size":  1000,
     "embedding_size": 1000, "batch_size": 128,
-    "learning_rate": 1. 0, "gradient_clip":  5.0,
+    "learning_rate": 1.0, "gradient_clip":  5.0,
 }
 
 EPOCHS_BASE, EPOCHS_DR = 10, 12
