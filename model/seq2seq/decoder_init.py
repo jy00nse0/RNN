@@ -9,7 +9,7 @@ init_map = {
     'zeros': lambda args: ZerosInit(args.decoder_num_layers, args.decoder_hidden_size, args.encoder_rnn_cell),
     'bahdanau': lambda args: BahdanauInit(args.encoder_hidden_size, args.decoder_num_layers, args.decoder_hidden_size,
                                           args.decoder_rnn_cell),
-    'adjust_pad': None,  # TODO
+    'adjust_pad': lambda args: EncoderLastStateInit(args.decoder_num_layers, args.decoder_hidden_size, args.decoder_rnn_cell),
     'adjust_all': None   # TODO
 }
 
@@ -117,6 +117,71 @@ class BahdanauInit(DecoderInit):
                                dim=0)
 
         if num_layers > self.decoder_num_layers:
+            hidden = hidden[:self.decoder_num_layers]
+
+        return hidden
+
+
+class EncoderLastStateInit(DecoderInit):
+    """
+    Sutskever et al. (2014) and Luong et al. (2015) approach:
+    Uses the encoder's last hidden state to initialize the decoder's initial state.
+    When encoder and decoder have different number of layers, pads with zeros or slices.
+    (Implements the 'adjust_pad' strategy from init_map)
+    """
+    def __init__(self, decoder_num_layers, decoder_hidden_size, rnn_cell_type):
+        super(EncoderLastStateInit, self).__init__()
+        assert rnn_cell_type == LSTM or rnn_cell_type == GRU
+        self.decoder_num_layers = decoder_num_layers
+        self.decoder_hidden_size = decoder_hidden_size
+        self.rnn_cell_type = rnn_cell_type
+
+    def forward(self, h_n):
+        # LSTM returns (h_n, c_n) tuple, GRU returns just h_n
+        if isinstance(h_n, tuple):
+            h_enc, c_enc = h_n
+        else:
+            h_enc = h_n
+            c_enc = None
+
+        # Adjust hidden state to match decoder layer count
+        h_dec = self.adjust_hidden_size(h_enc)
+        
+        # For LSTM, also adjust cell state
+        if self.rnn_cell_type == LSTM and c_enc is not None:
+            c_dec = self.adjust_hidden_size(c_enc)
+            return h_dec, c_dec
+        elif self.rnn_cell_type == LSTM and c_enc is None:
+            # Edge case: encoder is GRU but decoder is LSTM
+            # Initialize cell state with zeros
+            c_dec = torch.zeros_like(h_dec)
+            return h_dec, c_dec
+        
+        # GRU case: return only hidden state
+        return h_dec
+
+    def adjust_hidden_size(self, hidden):
+        """
+        Adjusts hidden state dimensions when encoder and decoder have different layer counts.
+        Pads with zeros if decoder has more layers, slices if encoder has more layers.
+        """
+        num_layers = hidden.size(0)
+        batch_size = hidden.size(1)
+        hidden_size = hidden.size(2)
+
+        # 1. Decoder has more layers: pad with zeros
+        if num_layers < self.decoder_num_layers:
+            padding = torch.zeros(
+                self.decoder_num_layers - num_layers, 
+                batch_size, 
+                hidden_size, 
+                device=hidden.device, 
+                dtype=hidden.dtype
+            )
+            hidden = torch.cat([hidden, padding], dim=0)
+
+        # 2. Encoder has more layers: slice (use first decoder_num_layers)
+        elif num_layers > self.decoder_num_layers:
             hidden = hidden[:self.decoder_num_layers]
 
         return hidden
