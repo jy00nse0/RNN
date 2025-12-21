@@ -579,12 +579,12 @@ def main():
                                 log_line = f"Epoch {epoch: 2d}:  BLEU = {bleu_score}, PPL = {ppl_score:.4f}\n"
                             else:
                                 log_line = f"Epoch {epoch: 2d}:  BLEU = {bleu_score}\n"
-                            print(f"    {log_line. strip()}")
+                            print(f"    {log_line.strip()}")
                             bleu_log.write(log_line)
-                            bleu_log. flush()
+                            bleu_log.flush()
                         else: 
                             log_line = f"Epoch {epoch:2d}:  BLEU evaluation failed\n"
-                            print(f"    {log_line. strip()}")
+                            print(f"    {log_line.strip()}")
                             bleu_log.write(log_line)
                             bleu_log.flush()
                 

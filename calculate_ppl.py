@@ -81,8 +81,8 @@ def main():
     args = parse_args()
     
     # Load saved model args and vocab
-    model_args = load_object(args.model_path + os.path.sep + 'args')
-    vocab = load_object(args.model_path + os.path.sep + 'vocab')
+    model_args = load_object(os.path.join(args.model_path, 'args'))
+    vocab = load_object(os.path.join(args.model_path, 'vocab'))
     
     # Override dataset if provided
     if args.dataset:
@@ -105,7 +105,7 @@ def main():
     model = train_model_factory(model_args, metadata)
     
     # Load checkpoint
-    checkpoint_path = get_model_path(args.model_path + os.path.sep, args.epoch)
+    checkpoint_path = get_model_path(args.model_path, args.epoch)
     print(f"Loading model from: {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location=device)
     
