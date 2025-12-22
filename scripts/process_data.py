@@ -9,14 +9,14 @@ UNK_TOKEN = '<unk>'
 
 def load_vocab(file_path, vocab_size):
     """
-    파일에서 단어 빈도수를 계산하여 상위 vocab_size개의 단어 집합을 반환.
+    파일에서 단어 빈도수를 계산하여 상위 vocab_size개의 단어 집합을 반환. 
     """
     print(f"Building vocabulary from {file_path}...")
     counter = Counter()
     with open(file_path, 'r', encoding='utf-8') as f:
-        for line in tqdm(f):
+        for line in tqdm(f, desc="Reading vocab"):
             tokens = line.strip().split()
-            counter.update(tokens)
+            counter. update(tokens)
     
     most_common = counter.most_common(vocab_size)
     vocab = set([word for word, count in most_common])
@@ -24,26 +24,24 @@ def load_vocab(file_path, vocab_size):
     print(f"Vocab size: {len(vocab)} (Top-{vocab_size} frequencies)")
     return vocab
 
-def process_and_save_dual(in_path, out_path_base, out_path_rev, vocab, is_source=True):
+def process_and_save(in_path, out_path, vocab):
     """
-    입력 파일(정방향)을 읽어:
+    입력 파일을 읽어: 
     1. Vocab 필터링 (<unk> 처리)
-    2. Base 경로에는 정방향 그대로 저장
-    3. Reversed 경로에는 역방향으로 뒤집어 저장 (Source인 경우만)
+    2. 출력 경로에 저장
     """
     print(f"Processing {in_path}...")
     
     with open(in_path, 'r', encoding='utf-8') as fin, \
-         open(out_path_base, 'w', encoding='utf-8') as f_base, \
-         open(out_path_rev, 'w', encoding='utf-8') as f_rev:
+         open(out_path, 'w', encoding='utf-8') as fout:
         
         unknown_count = 0
         total_count = 0
         
-        for line in tqdm(fin):
+        for line in tqdm(fin, desc=f"Processing {os.path.basename(in_path)}"):
             tokens = line.strip().split()
             
-            # 1. Vocab Filtering (<unk> 처리)
+            # Vocab Filtering (<unk> 처리)
             filtered_tokens = []
             for t in tokens:
                 total_count += 1
@@ -53,77 +51,81 @@ def process_and_save_dual(in_path, out_path_base, out_path_rev, vocab, is_source
                     filtered_tokens.append(UNK_TOKEN)
                     unknown_count += 1
             
-            # 2. Base Model용 저장 (Forward)
-            f_base.write(" ".join(filtered_tokens) + "\n")
-            
-            # 3. Reverse Model용 저장 (Backward)
-            # 논문에 따라 Source 문장만 뒤집음. Target은 그대로 둠.
-            if is_source:
-                reversed_tokens = list(reversed(filtered_tokens))
-                f_rev.write(" ".join(reversed_tokens) + "\n")
-            else:
-                # Target 데이터는 Reverse 모델에서도 정방향이어야 함
-                f_rev.write(" ".join(filtered_tokens) + "\n")
+            # 저장
+            fout.write(" ".join(filtered_tokens) + "\n")
 
-    print(f"  -> Saved Base (Forward): {out_path_base}")
-    print(f"  -> Saved Reversed: {out_path_rev}")
+    print(f"  -> Saved:  {out_path}")
     if total_count > 0:
         print(f"  -> Unknown token ratio: {unknown_count/total_count*100:.2f}%")
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--raw_dir', type=str, default='data/wmt14_raw', help='Input directory with raw forward files')
-    parser.add_argument('--out_dir', type=str, default='data/wmt14_vocab50k', help='Output directory')
-    parser.add_argument('--src_lang', type=str, default='en', help='Source language code (en or de)')
-    parser.add_argument('--tgt_lang', type=str, default='de', help='Target language code (en or de)')
+    parser.add_argument('--raw_dir', type=str, default='data/wmt14_tokenized', 
+                       help='Input directory with tokenized files')
+    parser.add_argument('--out_dir', type=str, default='data/wmt14_vocab50k', 
+                       help='Output directory')
+    parser.add_argument('--src_lang', type=str, default='en', 
+                       help='Source language code (en or de)')
+    parser.add_argument('--tgt_lang', type=str, default='de', 
+                       help='Target language code (en or de)')
     args = parser.parse_args()
 
-    # 경로 설정
-    base_dir = os.path.join(args.out_dir, 'base')       # Base 모델용 (Forward)
-    rev_dir = os.path.join(args.out_dir, 'reversed')    # Reverse 모델용 (Backward Source)
-    
+    # 경로 설정 (base/ 유지)
+    base_dir = os.path.join(args. out_dir, 'base')
     os.makedirs(base_dir, exist_ok=True)
-    os.makedirs(rev_dir, exist_ok=True)
 
-    # 파일명 정의 (언어 방향에 따라 동적으로 결정)
+    # 파일명 정의 (토큰화된 파일)
     files = {
-        'train': (f'train.clean.{args.src_lang}', f'train.clean.{args.tgt_lang}'),
-        'valid': (f'valid.clean.{args.src_lang}', f'valid.clean.{args.tgt_lang}'),
-        'test':  (f'test.clean.{args.src_lang}', f'test.clean.{args.tgt_lang}')
+        'train': (f'train.{args.src_lang}', f'train.{args.tgt_lang}'),
+        'valid': (f'valid.{args.src_lang}', f'valid.{args.tgt_lang}'),
+        'test':   (f'test.{args.src_lang}', f'test.{args.tgt_lang}')
     }
 
-    # 1. Vocab 구축 (Train 데이터 기준)
-    train_src_path = os.path.join(args.raw_dir, files['train'][0])
-    train_tgt_path = os.path.join(args.raw_dir, files['train'][1])
+    # 1.  Vocab 구축 (Train 데이터 기준)
+    print("\n" + "="*70)
+    print("Step 1: Building Vocabulary")
+    print("="*70)
     
+    train_src_path = os.path.join(args.raw_dir, files['train'][0])
+    train_tgt_path = os.path. join(args.raw_dir, files['train'][1])
+    
+    print(f"\nSource language: {args.src_lang}")
     vocab_src = load_vocab(train_src_path, VOCAB_SIZE)
+    
+    print(f"\nTarget language: {args.tgt_lang}")
     vocab_tgt = load_vocab(train_tgt_path, VOCAB_SIZE)
 
-    # 2. 데이터 처리 (Base와 Reversed 동시 생성)
+    # 2. 데이터 처리 (Vocab 필터링)
+    print("\n" + "="*70)
+    print("Step 2: Filtering Data with Vocabulary")
+    print("="*70)
+    
     for split, (src_file, tgt_file) in files.items():
-        print(f"\nProcessing {split} split...")
+        print(f"\n--- Processing {split. upper()} split ---")
         
         # Source Files Process
-        process_and_save_dual(
+        process_and_save(
             in_path=os.path.join(args.raw_dir, src_file),
-            out_path_base=os.path.join(base_dir, f'{split}.{args.src_lang}'),
-            out_path_rev=os.path.join(rev_dir, f'{split}.{args.src_lang}'),
-            vocab=vocab_src,
-            is_source=True # Source 파일은 Reverse 버전에서 뒤집힘
+            out_path=os.path.join(base_dir, f'{split}.{args.src_lang}'),
+            vocab=vocab_src
         )
         
         # Target Files Process
-        process_and_save_dual(
+        process_and_save(
             in_path=os.path.join(args.raw_dir, tgt_file),
-            out_path_base=os.path.join(base_dir, f'{split}.{args.tgt_lang}'),
-            out_path_rev=os.path.join(rev_dir, f'{split}.{args.tgt_lang}'),
-            vocab=vocab_tgt,
-            is_source=False # Target 파일은 뒤집지 않음
+            out_path=os.path.join(base_dir, f'{split}.{args.tgt_lang}'),
+            vocab=vocab_tgt
         )
 
-    print("\nAll processing done.")
-    print(f"Base data saved in: {base_dir}")
-    print(f"Reversed data saved in: {rev_dir}")
+    print("\n" + "="*70)
+    print("All processing done!")
+    print("="*70)
+    print(f"Processed data saved in: {base_dir}")
+    print("\nOutput structure:")
+    print(f"  {base_dir}/")
+    for split in files.keys():
+        print(f"    ├── {split}. {args.src_lang}")
+        print(f"    └── {split}.{args.tgt_lang}")
 
 if __name__ == '__main__':
     main()
