@@ -9,7 +9,7 @@ class Vocab:
     """Simple vocabulary class"""
     def __init__(self, tokens, specials=['<pad>', '<sos>', '<eos>', '<unk>']):
         self.specials = specials
-        self.itos = specials + list(set(tokens) - set(specials))
+        self. itos = specials + list(set(tokens) - set(specials))
         self.stoi = {tok: i for i, tok in enumerate(self.itos)}
         self.unk_index = self.stoi['<unk>']
         
@@ -17,7 +17,7 @@ class Vocab:
         return len(self.itos)
     
     def encode(self, tokens):
-        return [self.stoi.get(tok, self.unk_index) for tok in tokens]
+        return [self.stoi. get(tok, self.unk_index) for tok in tokens]
     
     def decode(self, indices):
         return [self.itos[idx] for idx in indices]
@@ -38,7 +38,7 @@ class TranslationDataset(Dataset):
         
         # Read target file
         with open(tgt_file, 'r', encoding='utf-8') as f:
-            for line in f:
+            for line in f: 
                 self.tgt_sentences.append(line.strip().split())
         
         assert len(self.src_sentences) == len(self.tgt_sentences)
@@ -80,16 +80,29 @@ def collate_fn(batch, pad_idx=0):
 
 def dataset_factory(args, device):
     """
-    [Revised] WMT14/15 데이터셋 로더
-    - args.dataset이 'base'를 포함하면 정방향(Forward) 데이터 사용
-    - args.dataset이 'deen'을 포함하면 De->En 방향으로 확장자(.de, .en) 교체
-    - args.dataset이 'wmt15'를 포함하면 WMT15 데이터셋 경로 사용
-    - args.dataset이 'sample100k'이면 sample 데이터셋 사용
+    WMT14/15 데이터셋 로더
+    
+    Args:
+        args: 학습 인자
+            - args.dataset: 데이터셋 이름
+                * 'wmt14-en-de': WMT14 English→German
+                * 'wmt15-deen':  WMT15 German→English
+                * 'sample100k': 샘플 데이터셋
+            - args.reverse: Source 문장 역순 처리 여부 (동적)
+            - args.batch_size: 배치 크기
+        device: PyTorch device (CPU/GPU)
+    
+    Returns:
+        metadata: 데이터셋 메타정보 (vocab_size, padding_idx 등)
+        vocab: Target 언어 Vocabulary
+        train_iter: 학습 데이터 반복자
+        val_iter:  검증 데이터 반복자
+        test_iter: 테스트 데이터 반복자
     """
     print(f"Loading data for {args.dataset}...")
 
-    # Determine dataset version (sample100k, WMT14 or WMT15)
-    if 'sample100k' in args.dataset.lower():
+    # Determine dataset version
+    if 'sample100k' in args.dataset. lower():
         root_dir = 'data/sample100k'
     elif 'wmt15' in args.dataset.lower():
         root_dir = 'data/wmt15_vocab50k/base'
@@ -101,17 +114,18 @@ def dataset_factory(args, device):
     if not os.path.exists(data_dir):
         raise FileNotFoundError(f"Data directory not found: {data_dir}")
 
-    # 2. 방향 결정 (En->De vs De->En)
-    # Table 3 실험용
+    # Determine translation direction
     if 'deen' in args.dataset.lower():
-        src_ext, tgt_ext = 'de', 'en'  # Src: German, Tgt: English
-        print("Direction: German -> English")
+        src_ext, tgt_ext = 'de', 'en'  # German → English
+        print("Direction: German → English")
     else:
-        src_ext, tgt_ext = 'en', 'de'  # Src: English, Tgt: German
-        print("Direction: English -> German")
+        src_ext, tgt_ext = 'en', 'de'  # English → German
+        print("Direction: English → German")
 
-    # Check if we should reverse source sentences
+    # Check if we should reverse source sentences (runtime option)
     reverse_src = getattr(args, 'reverse', False)
+    if reverse_src:
+        print("Source sentence reversal:  ENABLED (dynamic)")
     
     # Load training data first to build vocabulary
     train_dataset = TranslationDataset(
@@ -146,7 +160,7 @@ def dataset_factory(args, device):
         train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        collate_fn=lambda b: collate_fn(b, pad_idx)
+        collate_fn=lambda b:  collate_fn(b, pad_idx)
     )
     
     val_iter = DataLoader(
@@ -170,10 +184,10 @@ def dataset_factory(args, device):
 class Batch:
     """Wrapper for batch data"""
     def __init__(self, src, trg, device):
-        self.src = src.to(device) if device else src
+        self.src = src. to(device) if device else src
         self.trg = trg.to(device) if device else trg
         self.question = self.src
-        self.answer = self.trg
+        self. answer = self.trg
 
 class BatchWrapper:
     def __init__(self, dataloader, device=None):
@@ -193,5 +207,5 @@ def field_factory(args):
     return None
 
 def metadata_factory(args, vocab):
-    pad_idx = vocab.stoi.get('<pad>', 0)
+    pad_idx = vocab.stoi. get('<pad>', 0)
     return Metadata(vocab_size=len(vocab), padding_idx=pad_idx, vectors=None)
