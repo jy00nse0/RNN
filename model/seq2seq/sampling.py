@@ -23,7 +23,7 @@ class SequenceSampler(ABC):
     """
 
     @abstractmethod
-    def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length):
+    def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length, return_attention=False):
         raise NotImplementedError
 
 
@@ -31,7 +31,7 @@ class GreedySampler(SequenceSampler):
     """
     Greedy sampler always chooses the most probable next token when sampling sequence.
 
-    Inputs: encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length
+    Inputs: encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length, return_attention
         - **encoder_outputs** (seq_len, batch, encoder_hidden_size): Last encoder layer outputs for every timestamp.
         - **h_n** (num_layers * num_directions, batch, hidden_size): RNN outputs for all layers for t=seq_len (last
                     timestamp)
@@ -39,15 +39,18 @@ class GreedySampler(SequenceSampler):
         - **sos_idx** (scalar): Index of start of sentence token in vocabulary.
         - **eos_idx** (scalar): Index of end of sentence token in vocabulary.
         - **max_length** (scalar): Maximum length of sampled sequence.
+        - **return_attention** (bool): If True, return attention weights for UNK replacement.
 
-    Outputs: sequences, lengths
+    Outputs: sequences, lengths, attention_weights (optional)
         - **sequences** (batch, max_seq_len): Sampled sequences.
         - **lengths** (batch): Length of sequence for every batch.
+        - **attention_weights** (batch, max_seq_len, src_seq_len): Attention weights for each output token (only if return_attention=True).
     """
-    def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length):
+    def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length, return_attention=False):
         batch_size = encoder_outputs.size(1)
         device = encoder_outputs.device
         sequences = None
+        attention_list = [] if return_attention else None
 
         input_word = torch.tensor([sos_idx] * batch_size, device=device)
         kwargs = {}
@@ -57,6 +60,9 @@ class GreedySampler(SequenceSampler):
             input_word = argmax
             argmax = argmax.unsqueeze(1)  # (batch) -> (batch, 1) because of concatenating to sequences
             sequences = argmax if sequences is None else torch.cat([sequences, argmax], dim=1)
+            
+            if return_attention and attn_weights is not None:
+                attention_list.append(attn_weights.unsqueeze(1))  # (batch, 1, src_len)
 
         # ensure there is EOS token at the end of every sequence (important for calculating lengths)
         end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)  # (batch, 1)
@@ -65,6 +71,15 @@ class GreedySampler(SequenceSampler):
         # calculate lengths
         _, lengths = (sequences == eos_idx).max(dim=1)
 
+        if return_attention:
+            if attention_list:
+                # Concatenate all attention weights: (batch, max_seq_len, src_len)
+                attention_weights = torch.cat(attention_list, dim=1)
+            else:
+                # No attention mechanism used, return None
+                attention_weights = None
+            return sequences, lengths, attention_weights
+        
         return sequences, lengths
 
 
@@ -73,7 +88,7 @@ class RandomSampler(SequenceSampler):
     Random sampler uses roulette-wheel when selecting next token in sequence, tokens (softmax) probabilities are used as
     token weights in roulette-wheel.
 
-    Inputs: encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length
+    Inputs: encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length, return_attention
         - **encoder_outputs** (seq_len, batch, encoder_hidden_size): Last encoder layer outputs for every timestamp.
         - **h_n** (num_layers * num_directions, batch, hidden_size): RNN outputs for all layers for t=seq_len (last
                     timestamp)
@@ -81,15 +96,18 @@ class RandomSampler(SequenceSampler):
         - **sos_idx** (scalar): Index of start of sentence token in vocabulary.
         - **eos_idx** (scalar): Index of end of sentence token in vocabulary.
         - **max_length** (scalar): Maximum length of sampled sequence.
+        - **return_attention** (bool): If True, return attention weights for UNK replacement.
 
-    Outputs: sequences, lengths
+    Outputs: sequences, lengths, attention_weights (optional)
         - **sequences** (batch, max_seq_len): Sampled sequences.
         - **lengths** (batch): Length of sequence for every batch.
+        - **attention_weights** (batch, max_seq_len, src_seq_len): Attention weights for each output token (only if return_attention=True).
     """
-    def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length):
+    def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length, return_attention=False):
         batch_size = encoder_outputs.size(1)
         device = encoder_outputs.device
         sequences = None
+        attention_list = [] if return_attention else None
 
         input_word = torch.tensor([sos_idx] * batch_size, device=device)
         kwargs = {}
@@ -98,6 +116,9 @@ class RandomSampler(SequenceSampler):
             indices = torch.multinomial(F.softmax(output, dim=1), 1)  # roulette-wheel selection of tokens with probability as weights (batch, 1)
             input_word = indices.squeeze(1)  # (batch, 1) -> (batch)
             sequences = indices if sequences is None else torch.cat([sequences, indices], dim=1)
+            
+            if return_attention and attn_weights is not None:
+                attention_list.append(attn_weights.unsqueeze(1))  # (batch, 1, src_len)
 
         # ensure there is EOS token at the end of every sequence (important for calculating lengths)
         end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)  # (batch, 1)
@@ -106,6 +127,15 @@ class RandomSampler(SequenceSampler):
         # calculate lengths
         _, lengths = (sequences == eos_idx).max(dim=1)
 
+        if return_attention:
+            if attention_list:
+                # Concatenate all attention weights: (batch, max_seq_len, src_len)
+                attention_weights = torch.cat(attention_list, dim=1)
+            else:
+                # No attention mechanism used, return None
+                attention_weights = None
+            return sequences, lengths, attention_weights
+        
         return sequences, lengths
 
 
@@ -131,7 +161,7 @@ class BeamSearch(SequenceSampler):
 
     TODO this is very bad and very slow implementation of beam search, improve this ASAP
 
-    Inputs: encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length
+    Inputs: encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length, return_attention
         - **encoder_outputs** (seq_len, batch, encoder_hidden_size): Last encoder layer outputs for every timestamp.
         - **h_n** (num_layers * num_directions, batch, hidden_size): RNN outputs for all layers for t=seq_len (last
                     timestamp)
@@ -139,17 +169,19 @@ class BeamSearch(SequenceSampler):
         - **sos_idx** (scalar): Index of start of sentence token in vocabulary.
         - **eos_idx** (scalar): Index of end of sentence token in vocabulary.
         - **max_length** (scalar): Maximum length of sampled sequence.
+        - **return_attention** (bool): If True, return attention weights for UNK replacement.
 
-    Outputs: sequences, lengths
+    Outputs: sequences, lengths, attention_weights (optional)
         - **sequences** (batch, max_seq_len): Sampled sequences.
         - **lengths** (batch): Length of sequence for every batch.
+        - **attention_weights** (batch, max_seq_len, src_seq_len): Attention weights for each output token (only if return_attention=True).
     """
     def __init__(self, beam_width=10, alpha=1):
         self.beam_width = beam_width
         self.alpha = alpha
         self.denominator = 1 / (6**alpha)
 
-    def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length):
+    def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length, return_attention=False):
         batch_size = encoder_outputs.size(1)
         device = encoder_outputs.device
         sequences = None
@@ -165,6 +197,11 @@ class BeamSearch(SequenceSampler):
         # calculate lengths
         _, lengths = (sequences == eos_idx).max(dim=1)
 
+        if return_attention:
+            # Note: BeamSearch doesn't currently track attention weights, so return None
+            # This would require more significant changes to track attention in the beam
+            return sequences, lengths, None
+        
         return sequences, lengths
 
     def _sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length, device):

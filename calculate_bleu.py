@@ -11,6 +11,73 @@ from serialization import load_object
 from constants import MODEL_START_FORMAT
 
 
+def unk_replace(hypothesis, source, attention_weights, unk_token='<unk>', dictionary=None):
+    """
+    Replace <unk> tokens in hypothesis with source words using attention weights.
+    
+    Implementation of the UNK replacement technique from Luong et al. (2015)
+    "Effective Approaches to Attention-based Neural Machine Translation".
+    
+    Args:
+        hypothesis (str): Generated translation containing <unk> tokens
+        source (str): Source sentence (tokenized string)
+        attention_weights (torch.Tensor or None): Attention weights of shape (tgt_len, src_len)
+        unk_token (str): The unknown token string (default: '<unk>')
+        dictionary (dict or None): Optional bilingual dictionary for word translation
+        
+    Returns:
+        str: Hypothesis with <unk> tokens replaced
+    """
+    # If no attention weights available, cannot perform replacement
+    if attention_weights is None:
+        return hypothesis
+    
+    # Split hypothesis and source into tokens
+    hyp_tokens = hypothesis.split()
+    src_tokens = source.split()
+    
+    # If no UNK tokens, return as-is
+    if unk_token not in hyp_tokens:
+        return hypothesis
+    
+    # Convert attention weights to numpy for easier manipulation
+    if hasattr(attention_weights, 'cpu'):
+        # torch tensor - convert to numpy
+        attention_weights = attention_weights.cpu().numpy()
+    
+    # Process each token in hypothesis
+    replaced_tokens = []
+    for t, token in enumerate(hyp_tokens):
+        if token == unk_token:
+            # Find source position with highest attention
+            if t < attention_weights.shape[0]:
+                # Get attention distribution for this target position
+                attn_dist = attention_weights[t]
+                # Find source position with max attention
+                src_pos = attn_dist.argmax()
+                
+                # Get the source word
+                if src_pos < len(src_tokens):
+                    src_word = src_tokens[src_pos]
+                    
+                    # If dictionary provided, try to translate
+                    if dictionary is not None and src_word in dictionary:
+                        replaced_tokens.append(dictionary[src_word])
+                    else:
+                        # Direct copy (for proper nouns, numbers, etc.)
+                        replaced_tokens.append(src_word)
+                else:
+                    # Fallback: keep UNK
+                    replaced_tokens.append(token)
+            else:
+                # Fallback: keep UNK
+                replaced_tokens.append(token)
+        else:
+            replaced_tokens.append(token)
+    
+    return ' '.join(replaced_tokens)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Script for calculating chatbot BLEU score.')
     parser.add_argument('-p', '--model-path', required=True,
@@ -21,6 +88,8 @@ def parse_args():
     parser.add_argument('-r', '--reference-path', required=True, help='Path to reference file.')
     parser.add_argument('--max-seq-len', type=int, default=30, help='Maximum length for output sequence.')
     parser.add_argument('--cuda', action='store_true', default=False, help='Use cuda if available.')
+    parser.add_argument('--unk-replace', action='store_true', default=False, 
+                        help='Apply UNK replacement using attention weights.')
     return parser.parse_args()
 
 
@@ -32,22 +101,49 @@ def get_model_path(dir_path, epoch):
     raise ValueError("Model from epoch %d doesn't exist in %s" % (epoch, dir_path))
 
 
-def get_answers(model, questions, args):
+def get_answers(model, questions, args, return_attention=False):
     batch_size = 1000
     answers = []
+    all_attention = [] if return_attention else None
     num_batches = len(questions) // batch_size
     rest = len(questions) % batch_size
+    
     for batch in range(num_batches):
-        batch_answers = model(questions[batch * batch_size:(batch + 1) * batch_size],
-                             sampling_strategy=args.sampling_strategy,
-                             max_seq_len=args.max_seq_len)
+        batch_questions = questions[batch * batch_size:(batch + 1) * batch_size]
+        if return_attention:
+            batch_answers, batch_attention = model(batch_questions,
+                                                   sampling_strategy=args.sampling_strategy,
+                                                   max_seq_len=args.max_seq_len,
+                                                   return_attention=True)
+            all_attention.append(batch_attention)
+        else:
+            batch_answers = model(batch_questions,
+                                 sampling_strategy=args.sampling_strategy,
+                                 max_seq_len=args.max_seq_len)
         answers.extend(batch_answers)
 
     if rest != 0:
-        batch_answers = model(questions[-rest:], sampling_strategy=args.sampling_strategy,
-                             max_seq_len=args.max_seq_len)
+        batch_questions = questions[-rest:]
+        if return_attention:
+            batch_answers, batch_attention = model(batch_questions,
+                                                   sampling_strategy=args.sampling_strategy,
+                                                   max_seq_len=args.max_seq_len,
+                                                   return_attention=True)
+            all_attention.append(batch_attention)
+        else:
+            batch_answers = model(batch_questions,
+                                 sampling_strategy=args.sampling_strategy,
+                                 max_seq_len=args.max_seq_len)
         answers.extend(batch_answers)
 
+    if return_attention:
+        # Concatenate all attention weights
+        if all_attention:
+            attention_weights = torch.cat(all_attention, dim=0)
+        else:
+            attention_weights = None
+        return answers, attention_weights
+    
     return answers
 
 
@@ -126,7 +222,21 @@ def main():
     with open(test_src_path, 'r', encoding='utf-8') as f:
         questions = [line.strip() for line in f]
     
-    answers = get_answers(model, questions, args)
+    # Get answers with optional attention weights for UNK replacement
+    if args.unk_replace:
+        answers, attention_weights = get_answers(model, questions, args, return_attention=True)
+        
+        # Apply UNK replacement to each answer
+        if attention_weights is not None:
+            replaced_answers = []
+            for i, (answer, question) in enumerate(zip(answers, questions)):
+                # Get attention weights for this sample
+                attn = attention_weights[i]  # (tgt_len, src_len)
+                replaced_answer = unk_replace(answer, question, attn)
+                replaced_answers.append(replaced_answer)
+            answers = replaced_answers
+    else:
+        answers = get_answers(model, questions, args)
 
     bleu = sacrebleu.corpus_bleu(answers, [ref_answers])
 
