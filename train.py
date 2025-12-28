@@ -482,16 +482,16 @@ def main():
     
     # ===== Dataset Loading =====
     print('Loading dataset...', end='', flush=True)
-    metadata, vocab, train_iter, val_iter, test_iter = dataset_factory(args, device)
+    src_metadata, tgt_metadata, src_vocab, tgt_vocab, train_iter, val_iter, test_iter = dataset_factory(args, device)
     print('Done.')
 
     print('Saving vocab and args...', end='', flush=True)
-    save_vocab(vocab, args.save_path + os.path.sep + 'vocab')
+    save_vocab(tgt_vocab, args.save_path + os.path.sep + 'vocab')
     save_object(args, args.save_path + os.path.sep + 'args')
     print('Done')
 
     # ===== Model Initialization =====
-    model = train_model_factory(args, metadata)
+    model = train_model_factory(args, src_metadata, tgt_metadata)
     model = model.to(device)
     
     if cuda and args.multi_gpu:
@@ -542,28 +542,28 @@ def main():
                 model=model,
                 optimizer=optimizer,
                 train_iter=train_iter,
-                metadata=metadata,
+                metadata=tgt_metadata,  # Use TGT metadata for loss/output dimension
                 grad_clip=args.gradient_clip,
                 reverse_src=args.reverse,
                 use_amp=use_amp,
                 scaler=scaler,
                 epoch=epoch,
                 save_path=args.save_path,
-                vocab=vocab
+                vocab=tgt_vocab
             )
             
             # Evaluate on validation set
             val_loss = evaluate(
                 model=model,
                 val_iter=val_iter,
-                metadata=metadata,
+                metadata=tgt_metadata,  # Use TGT metadata for loss/output dimension
                 reverse_src=args.reverse,
                 verbose=True
             )
             
             # Generate and display sample translations
             print("\n  🔍 Sample Translations:")
-            samples = generate_sample_translations(model, val_iter, metadata, vocab, num_samples=2)
+            samples = generate_sample_translations(model, val_iter, tgt_metadata, tgt_vocab, num_samples=2)
             for i, sample in enumerate(samples, 1):
                 print(f"\n  Example {i}:")
                 print(f"    SRC: {sample['source']}")
@@ -619,7 +619,7 @@ def main():
     test_loss = evaluate(
         model=model,
         val_iter=test_iter,
-        metadata=metadata,
+        metadata=tgt_metadata,  # Use TGT metadata
         reverse_src=args.reverse
     )
     

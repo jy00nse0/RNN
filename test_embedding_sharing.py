@@ -54,32 +54,32 @@ class Metadata:
         self.vectors = None  # No pre-trained embeddings
 
 
-def test_embedding_sharing():
-    """Test that encoder and decoder share the same embedding object"""
-    print("\n=== Testing Embedding Sharing ===")
+def test_embedding_separation():
+    """Test that encoder and decoder have separate embedding objects"""
+    print("\n=== Testing Embedding Separation ===")
     
     vocab_size = 100
     args = Args()
     metadata = Metadata(vocab_size)
     
     # Create model using factory
-    model = train_model_factory(args, metadata)
+    model = train_model_factory(args, metadata, metadata)
     
-    # Check that embeddings are the same object
+    # Check that embeddings are separate objects
     encoder_embed = model.encoder.embed
     decoder_embed = model.decoder.embed
     
     print(f"Encoder embedding id: {id(encoder_embed)}")
     print(f"Decoder embedding id: {id(decoder_embed)}")
-    print(f"Are embeddings the same object? {encoder_embed is decoder_embed}")
+    print(f"Are embeddings separate? {encoder_embed is not decoder_embed}")
     
-    assert encoder_embed is decoder_embed, "Encoder and decoder should share the same embedding!"
-    print("✅ Embedding sharing test passed!")
+    assert encoder_embed is not decoder_embed, "Encoder and decoder should have separate embeddings!"
+    print("✅ Embedding separation test passed!")
     return True
 
 
 def test_gradient_accumulation():
-    """Test that gradients accumulate from both encoder and decoder"""
+    """Test that gradients accumulate separately on encoder and decoder embeddings"""
     print("\n=== Testing Gradient Accumulation ===")
     
     vocab_size = 100
@@ -89,7 +89,7 @@ def test_gradient_accumulation():
     args = Args()
     metadata = Metadata(vocab_size)
     
-    model = train_model_factory(args, metadata)
+    model = train_model_factory(args, metadata, metadata)
     model.train()
     
     # Create dummy input tensors
@@ -111,20 +111,24 @@ def test_gradient_accumulation():
     # Backward pass
     loss.backward()
     
-    # Check that embedding has gradients
-    shared_embed = model.encoder.embed
-    assert shared_embed.weight.grad is not None, "Embedding should have gradients!"
-    assert shared_embed.weight.grad.abs().sum() > 0, "Embedding gradients should be non-zero!"
+    # Check that both embeddings have gradients
+    encoder_embed = model.encoder.embed
+    decoder_embed = model.decoder.embed
+    assert encoder_embed.weight.grad is not None, "Encoder embedding should have gradients!"
+    assert decoder_embed.weight.grad is not None, "Decoder embedding should have gradients!"
+    assert encoder_embed.weight.grad.abs().sum() > 0, "Encoder embedding gradients should be non-zero!"
+    assert decoder_embed.weight.grad.abs().sum() > 0, "Decoder embedding gradients should be non-zero!"
     
     print(f"Loss value: {loss.item():.4f}")
-    print(f"Embedding gradient norm: {shared_embed.weight.grad.norm().item():.4f}")
+    print(f"Encoder embedding gradient norm: {encoder_embed.weight.grad.norm().item():.4f}")
+    print(f"Decoder embedding gradient norm: {decoder_embed.weight.grad.norm().item():.4f}")
     print("✅ Gradient accumulation test passed!")
     return True
 
 
-def test_memory_savings():
-    """Test that using shared embeddings saves memory"""
-    print("\n=== Testing Memory Savings ===")
+def test_memory_usage():
+    """Test memory usage with separate embeddings"""
+    print("\n=== Testing Memory Usage ===")
     
     vocab_size = 50000  # Typical vocab size from paper
     embedding_size = 1000  # Typical embedding size from paper
@@ -134,77 +138,69 @@ def test_memory_savings():
     bytes_per_param = 4  # float32
     separate_memory_mb = (2 * params_per_embedding * bytes_per_param) / (1024 * 1024)
     
-    # Calculate memory for shared embeddings
-    shared_memory_mb = (params_per_embedding * bytes_per_param) / (1024 * 1024)
-    
-    # Calculate savings
-    savings_mb = separate_memory_mb - shared_memory_mb
-    
     print(f"Vocabulary size: {vocab_size}")
     print(f"Embedding dimension: {embedding_size}")
     print(f"Memory with separate embeddings: {separate_memory_mb:.2f} MB")
-    print(f"Memory with shared embeddings: {shared_memory_mb:.2f} MB")
-    print(f"Memory savings: {savings_mb:.2f} MB")
     
-    # Verify actual implementation uses shared embeddings
+    # Verify actual implementation uses separate embeddings
     args = Args()
     args.embedding_size = embedding_size
     metadata = Metadata(vocab_size)
     
-    model = train_model_factory(args, metadata)
+    model = train_model_factory(args, metadata, metadata)
     
     # Count actual parameters
-    total_embed_params = sum(p.numel() for p in model.encoder.embed.parameters())
-    expected_params = vocab_size * embedding_size
+    encoder_embed_params = sum(p.numel() for p in model.encoder.embed.parameters())
+    decoder_embed_params = sum(p.numel() for p in model.decoder.embed.parameters())
+    total_embed_params = encoder_embed_params + decoder_embed_params
+    expected_params = 2 * vocab_size * embedding_size
     
     assert total_embed_params == expected_params, f"Expected {expected_params} params, got {total_embed_params}"
-    print(f"Actual embedding parameters: {total_embed_params:,}")
-    print("✅ Memory savings test passed!")
+    print(f"Encoder embedding parameters: {encoder_embed_params:,}")
+    print(f"Decoder embedding parameters: {decoder_embed_params:,}")
+    print(f"Total embedding parameters: {total_embed_params:,}")
+    print("✅ Memory usage test passed!")
     return True
 
 
-def test_parameter_identity():
-    """Test that encoder and decoder embedding weights are the same tensor"""
-    print("\n=== Testing Parameter Identity ===")
+def test_parameter_independence():
+    """Test that encoder and decoder embedding weights are independent tensors"""
+    print("\n=== Testing Parameter Independence ===")
     
     vocab_size = 100
     args = Args()
     metadata = Metadata(vocab_size)
     
-    model = train_model_factory(args, metadata)
+    model = train_model_factory(args, metadata, metadata)
     
     # Get embedding weights
     encoder_weight = model.encoder.embed.weight
     decoder_weight = model.decoder.embed.weight
     
-    # Check that they are the same tensor (not just equal values)
-    assert encoder_weight is decoder_weight, "Embedding weights should be the same tensor!"
+    # Check that they are different tensors
+    assert encoder_weight is not decoder_weight, "Embedding weights should be different tensors!"
     
-    # Modify encoder embedding and check decoder sees the change (using no_grad to avoid in-place error)
+    # Modify encoder embedding and check decoder is NOT affected (using no_grad to avoid in-place error)
     with torch.no_grad():
-        original_value = encoder_weight[0, 0].item()
         encoder_weight[0, 0] = 999.0
         
-        assert decoder_weight[0, 0].item() == 999.0, "Changes to encoder embedding should reflect in decoder!"
-        
-        # Restore original value
-        encoder_weight[0, 0] = original_value
+        assert decoder_weight[0, 0].item() != 999.0, "Changes to encoder embedding should NOT affect decoder!"
     
-    print("✅ Parameter identity test passed!")
+    print("✅ Parameter independence test passed!")
     return True
 
 
 def run_all_tests():
     """Run all tests"""
     print("=" * 60)
-    print("Testing Embedding Sharing Implementation")
+    print("Testing Separate Embedding Implementation")
     print("=" * 60)
     
     tests = [
-        test_embedding_sharing,
+        test_embedding_separation,
         test_gradient_accumulation,
-        test_memory_savings,
-        test_parameter_identity,
+        test_memory_usage,
+        test_parameter_independence,
     ]
     
     all_passed = True

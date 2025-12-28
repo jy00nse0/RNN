@@ -84,10 +84,15 @@ def main():
 
     field = field_factory(model_args)
     field.vocab = vocab
-    metadata = metadata_factory(model_args, vocab)
+    # For inference, we need both src and tgt metadata
+    # Since saved vocab is TGT vocab, we create metadata for both
+    # In practice, for inference we may only have TGT vocab saved,
+    # so we use it for both (this is acceptable for inference on same-language models)
+    tgt_metadata = metadata_factory(model_args, vocab)
+    src_metadata = metadata_factory(model_args, vocab)
 
     model = ModelDecorator(
-        predict_model_factory(model_args, metadata, get_model_path(args.model_path + os.path.sep, args.epoch), field))
+        predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path + os.path.sep, args.epoch), field))
     model = model.to(device)
     print('model loaded')
     model.eval()

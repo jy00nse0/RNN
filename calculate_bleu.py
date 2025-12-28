@@ -99,9 +99,12 @@ def main():
 
     # Create a simple field wrapper for vocab
     field = SimpleField(vocab)
-    metadata = metadata_factory(model_args, vocab)
+    # For inference, we need both src and tgt metadata
+    # Since saved vocab is TGT vocab, we create metadata for both
+    tgt_metadata = metadata_factory(model_args, vocab)
+    src_metadata = metadata_factory(model_args, vocab)
 
-    model = predict_model_factory(model_args, metadata, get_model_path(args.model_path + os.path.sep, args.epoch), field)
+    model = predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path + os.path.sep, args.epoch), field)
     model = model.to(device)
     model.eval()
 
