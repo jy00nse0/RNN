@@ -2,6 +2,7 @@
 
 import os
 import argparse
+import warnings
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -35,6 +36,17 @@ New Optimizations:
 4. zero_grad(set_to_none=True) for better performance
 5. TF32 and cuDNN benchmarking enabled
 """
+
+
+def validate_teacher_forcing_ratio(value: float):
+    if not 0.0 <= value <= 1.0:
+        raise ValueError("Teacher forcing ratio must be between 0 and 1.")
+    if value == 0.0:
+        warnings.warn(
+            "Teacher forcing ratio is 0. Decoder never sees target tokens during training; "
+            "loss may stagnate. Set --teacher-forcing-ratio > 0 for standard cross-entropy training.",
+            RuntimeWarning
+        )
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Script for training seq2seq chatbot.')
@@ -148,11 +160,7 @@ def parse_args():
 
     args = parser.parse_args()
 
-    if not 0.0 <= args.teacher_forcing_ratio <= 1.0:
-        raise ValueError("Teacher forcing ratio must be between 0 and 1.")
-    if args.teacher_forcing_ratio == 0.0:
-        print("⚠️  Teacher forcing ratio is 0. Decoder never sees target tokens during training; "
-              "loss may stagnate. Set --teacher-forcing-ratio > 0 for standard cross-entropy training.")
+    validate_teacher_forcing_ratio(args.teacher_forcing_ratio)
 
     # [Note] Embeddings logic preserved but likely not used if training from scratch with vocab 50k
     if not args.embedding_type and not args.embedding_size:
