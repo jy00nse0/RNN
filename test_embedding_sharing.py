@@ -31,10 +31,12 @@ class Args:
         self.decoder_rnn_dropout = 0.0
         self.luong_attn_hidden_size = 32
         self.luong_input_feed = False
-        self.decoder_init_type = 'adjust_pad'  # Changed from 'zeros' to use encoder outputs
+        # Use 'adjust_pad' instead of 'zeros' to enable gradient flow from decoder to encoder
+        self.decoder_init_type = 'adjust_pad'
         
         # Attention args
-        self.attention_type = 'global'  # Changed from 'none' to use encoder outputs
+        # Use 'global' attention to ensure encoder outputs are used and gradients flow to encoder embeddings
+        self.attention_type = 'global'
         self.attention_score = 'dot'
         
         # Embedding args

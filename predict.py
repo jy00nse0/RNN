@@ -85,10 +85,11 @@ def main():
     field = field_factory(model_args)
     field.vocab = vocab
     # For inference, we need both src and tgt metadata.
-    # Note: During training, only TGT vocab is saved. For same-direction translation
+    # LIMITATION: During training, only TGT vocab is saved. For same-direction translation
     # (e.g., model trained on en-de and used on en-de), using TGT vocab for both
-    # is acceptable since the vocabularies are built from the same dataset.
-    # For cross-direction inference or different vocab sizes, both vocabs should be saved.
+    # is acceptable IF the source and target vocabularies have the same size.
+    # FUTURE WORK: Save both src_vocab and tgt_vocab during training to support
+    # different vocab sizes and cross-direction inference.
     tgt_metadata = metadata_factory(model_args, vocab)
     src_metadata = metadata_factory(model_args, vocab)
 

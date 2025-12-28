@@ -263,10 +263,17 @@ def generate_sample_translations(model, val_iter, tgt_metadata, src_vocab, tgt_v
             tgt_tokens = answer[1:, 0].cpu().tolist()
             pred_tokens = predictions[:, 0].cpu().tolist()
             
-            # Convert to words (filter padding) - use correct vocab for each
-            src_words = [src_vocab.itos[idx] for idx in src_tokens if idx < len(src_vocab.itos)]
-            tgt_words = [tgt_vocab.itos[idx] for idx in tgt_tokens if idx < len(tgt_vocab.itos)]
-            pred_words = [tgt_vocab.itos[idx] for idx in pred_tokens if idx < len(tgt_vocab.itos)]
+            # Convert to words (filter padding and invalid indices) - use correct vocab for each
+            # Filter: valid index range and not padding token
+            src_pad_idx = 0  # Source padding index (from Vocab construction)
+            tgt_pad_idx = tgt_metadata.padding_idx
+            
+            src_words = [src_vocab.itos[idx] for idx in src_tokens 
+                        if 0 <= idx < len(src_vocab.itos) and idx != src_pad_idx]
+            tgt_words = [tgt_vocab.itos[idx] for idx in tgt_tokens 
+                        if 0 <= idx < len(tgt_vocab.itos) and idx != tgt_pad_idx]
+            pred_words = [tgt_vocab.itos[idx] for idx in pred_tokens 
+                         if 0 <= idx < len(tgt_vocab.itos) and idx != tgt_pad_idx]
             
             samples.append({
                 'source': ' '.join(src_words),
