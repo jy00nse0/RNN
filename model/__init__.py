@@ -6,19 +6,19 @@ from model.seq2seq.model import Seq2SeqTrain, Seq2SeqPredict
 from collections import OrderedDict
 
 
-def train_model_factory(args, metadata):
-    # Create shared embedding once (for both encoder and decoder)
-    shared_embed = embeddings_factory(args, metadata)
-    
-    # Pass the same embedding to both encoder and decoder
-    encoder = encoder_factory(args, metadata, embed=shared_embed)
-    decoder = decoder_factory(args, metadata, embed=shared_embed)
-    
-    return Seq2SeqTrain(encoder, decoder, metadata.vocab_size, teacher_forcing_ratio=args.teacher_forcing_ratio)
+def train_model_factory(args, src_metadata, tgt_metadata):
+    """
+    Build Seq2Seq model with SRC metadata for Encoder and TGT metadata for Decoder.
+    Output vocabulary size is TGT vocab size.
+    """
+    # Separate embeddings per module to match vocabularies
+    encoder = encoder_factory(args, src_metadata, embed=None)
+    decoder = decoder_factory(args, tgt_metadata, embed=None)
+    return Seq2SeqTrain(encoder, decoder, tgt_metadata.vocab_size, teacher_forcing_ratio=args.teacher_forcing_ratio)
 
 
-def predict_model_factory(args, metadata, model_path, field):
-    train_model = train_model_factory(args, metadata)
+def predict_model_factory(args, src_metadata, tgt_metadata, model_path, field):
+    train_model = train_model_factory(args, src_metadata, tgt_metadata)
     train_model.load_state_dict(get_state_dict(args, model_path))
     return Seq2SeqPredict(train_model.encoder, train_model.decoder, field)
 

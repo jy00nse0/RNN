@@ -81,6 +81,7 @@ def collate_fn(batch, pad_idx=0):
 def dataset_factory(args, device):
     """
     WMT14/15 데이터셋 로더
+    Returns both SRC and TGT metadata/vocab.
     
     Args:
         args: 학습 인자
@@ -93,8 +94,10 @@ def dataset_factory(args, device):
         device: PyTorch device (CPU/GPU)
     
     Returns:
-        metadata: 데이터셋 메타정보 (vocab_size, padding_idx 등)
-        vocab: Target 언어 Vocabulary
+        src_metadata: Source 메타정보 (vocab_size, padding_idx 등)
+        tgt_metadata: Target 메타정보 (vocab_size, padding_idx 등)
+        src_vocab: Source 언어 Vocabulary
+        tgt_vocab: Target 언어 Vocabulary
         train_iter: 학습 데이터 반복자
         val_iter:  검증 데이터 반복자
         test_iter: 테스트 데이터 반복자
@@ -154,32 +157,41 @@ def dataset_factory(args, device):
     print(f"Vocab size: SRC={len(train_dataset.src_vocab)}, TGT={len(train_dataset.tgt_vocab)}")
     
     # Create DataLoaders
-    pad_idx = train_dataset.tgt_vocab.stoi['<pad>']
+    # Note: assume shared specials so pad_idx is 0 for both; use TGT pad_idx for loss
+    pad_idx_tgt = train_dataset.tgt_vocab.stoi['<pad>']
     
     train_iter = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        collate_fn=lambda b:  collate_fn(b, pad_idx)
+        collate_fn=lambda b:  collate_fn(b, pad_idx_tgt)
     )
     
     val_iter = DataLoader(
         val_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        collate_fn=lambda b: collate_fn(b, pad_idx)
+        collate_fn=lambda b: collate_fn(b, pad_idx_tgt)
     )
     
     test_iter = DataLoader(
         test_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        collate_fn=lambda b: collate_fn(b, pad_idx)
+        collate_fn=lambda b: collate_fn(b, pad_idx_tgt)
     )
     
-    metadata = Metadata(vocab_size=len(train_dataset.tgt_vocab), padding_idx=pad_idx, vectors=None)
+    # Build SRC/TGT metadata separately
+    # Note: Both vocabs have '<pad>' at index 0 by construction in Vocab class
+    pad_idx_src = train_dataset.src_vocab.stoi.get('<pad>', 0)
+    pad_idx_tgt = train_dataset.tgt_vocab.stoi.get('<pad>', 0)
+    assert pad_idx_src == 0 and pad_idx_tgt == 0, "Padding token must be at index 0"
     
-    return metadata, train_dataset.tgt_vocab, BatchWrapper(train_iter, device), BatchWrapper(val_iter, device), BatchWrapper(test_iter, device)
+    src_metadata = Metadata(vocab_size=len(train_dataset.src_vocab), padding_idx=pad_idx_src, vectors=None)
+    tgt_metadata = Metadata(vocab_size=len(train_dataset.tgt_vocab), padding_idx=pad_idx_tgt, vectors=None)
+    
+    # Return both vocabularies and iterators
+    return src_metadata, tgt_metadata, train_dataset.src_vocab, train_dataset.tgt_vocab, BatchWrapper(train_iter, device), BatchWrapper(val_iter, device), BatchWrapper(test_iter, device)
 
 class Batch:
     """Wrapper for batch data"""

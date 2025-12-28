@@ -37,10 +37,10 @@ def main():
             self.decoder_rnn_dropout = 0.2
             self.luong_attn_hidden_size = 256
             self.luong_input_feed = False
-            self.decoder_init_type = 'zeros'
+            self.decoder_init_type = 'adjust_pad'  # Use encoder outputs
             
             # Attention configuration
-            self.attention_type = 'none'
+            self.attention_type = 'global'  # Use attention to get gradients to encoder
             self.attention_score = 'dot'
             
             # Embedding configuration (matching paper settings)
@@ -66,12 +66,12 @@ def main():
     print(f"  Encoder hidden size: {args.encoder_hidden_size}")
     print(f"  Decoder hidden size: {args.decoder_hidden_size}")
     
-    # Create model with shared embeddings
+    # Create model with separate embeddings for encoder and decoder
     print("\n1. Creating model with train_model_factory()...")
-    model = train_model_factory(args, metadata)
+    model = train_model_factory(args, metadata, metadata)
     
-    # Verify embeddings are shared
-    print("\n2. Verifying embedding sharing...")
+    # Verify embeddings are now separate (not shared)
+    print("\n2. Verifying separate embeddings...")
     encoder_embed = model.encoder.embed
     decoder_embed = model.decoder.embed
     
@@ -79,22 +79,19 @@ def main():
     print(f"   Decoder embedding address: {id(decoder_embed)}")
     print(f"   Same object? {encoder_embed is decoder_embed}")
     
-    if encoder_embed is not decoder_embed:
-        print("   ❌ FAILED: Embeddings are not shared!")
+    if encoder_embed is decoder_embed:
+        print("   ❌ FAILED: Embeddings should be separate!")
         return False
-    print("   ✅ SUCCESS: Embeddings are shared!")
+    print("   ✅ SUCCESS: Embeddings are separate (as expected)!")
     
-    # Calculate memory savings
-    print("\n3. Calculating memory savings...")
+    # Calculate memory usage with separate embeddings
+    print("\n3. Calculating memory usage...")
     params_per_embedding = metadata.vocab_size * args.embedding_size
     bytes_per_param = 4  # float32
     separate_memory_mb = (2 * params_per_embedding * bytes_per_param) / (1024 * 1024)
-    shared_memory_mb = (params_per_embedding * bytes_per_param) / (1024 * 1024)
-    savings_mb = separate_memory_mb - shared_memory_mb
     
-    print(f"   Without sharing: {separate_memory_mb:.2f} MB (2 separate embeddings)")
-    print(f"   With sharing: {shared_memory_mb:.2f} MB (1 shared embedding)")
-    print(f"   Memory saved: {savings_mb:.2f} MB ({savings_mb/separate_memory_mb*100:.1f}%)")
+    print(f"   With separate embeddings: {separate_memory_mb:.2f} MB (2 separate embeddings)")
+    print(f"   Note: Separate embeddings allow different vocab sizes for SRC and TGT")
     
     # Simulate training step
     print("\n4. Simulating training step...")
@@ -124,37 +121,26 @@ def main():
     print("   Running backward pass...")
     loss.backward()
     
-    # Verify gradients accumulated on shared embedding
+    # Verify gradients accumulated on both embeddings
     print("\n5. Verifying gradient accumulation...")
-    if encoder_embed.weight.grad is None:
-        print("   ❌ FAILED: No gradients on embedding!")
+    if encoder_embed.weight.grad is None or decoder_embed.weight.grad is None:
+        print("   ❌ FAILED: No gradients on embeddings!")
         return False
     
-    grad_norm = encoder_embed.weight.grad.norm().item()
-    grad_nonzero = (encoder_embed.weight.grad.abs() > 0).sum().item()
-    total_params = encoder_embed.weight.numel()
+    encoder_grad_norm = encoder_embed.weight.grad.norm().item()
+    decoder_grad_norm = decoder_embed.weight.grad.norm().item()
     
-    print(f"   Gradient norm: {grad_norm:.4f}")
-    print(f"   Non-zero gradients: {grad_nonzero:,} / {total_params:,} ({grad_nonzero/total_params*100:.1f}%)")
-    print("   ✅ SUCCESS: Gradients accumulated on shared embedding!")
-    
-    # Verify that encoder and decoder see the same gradients
-    print("\n6. Verifying gradient identity...")
-    if encoder_embed.weight.grad is not decoder_embed.weight.grad:
-        print("   ❌ FAILED: Encoder and decoder have different gradient tensors!")
-        return False
-    print("   ✅ SUCCESS: Encoder and decoder share the same gradient tensor!")
+    print(f"   Encoder gradient norm: {encoder_grad_norm:.4f}")
+    print(f"   Decoder gradient norm: {decoder_grad_norm:.4f}")
+    print("   ✅ SUCCESS: Gradients accumulated on both separate embeddings!")
     
     print("\n" + "=" * 70)
     print("✅ All integration tests passed!")
     print("=" * 70)
     print("\nSummary:")
-    print(f"  ✅ Encoder and Decoder share the same embedding parameters")
-    print(f"  ✅ Gradients accumulate from both sides (more stable training)")
-    print(f"  ✅ Memory saved: {savings_mb:.2f} MB")
-    print(f"\nFor full-scale model (50k vocab × 1000 dim):")
-    full_scale_savings = (50000 * 1000 * 4) / (1024 * 1024)
-    print(f"  Memory savings: ~{full_scale_savings:.0f} MB")
+    print(f"  ✅ Encoder and Decoder have separate embedding parameters")
+    print(f"  ✅ Gradients accumulate separately on each side")
+    print(f"  ✅ Allows different vocab sizes for SRC and TGT")
     print("=" * 70)
     
     return True
