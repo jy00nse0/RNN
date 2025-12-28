@@ -468,11 +468,6 @@ def main():
     cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda' if cuda else 'cpu')
 
-    # ===== Reproducibility =====
-    torch.manual_seed(42)
-    if cuda:
-        torch.cuda.manual_seed_all(42)
-
     print("=" * 70)
     print("Using %s for training" % ('GPU' if cuda else 'CPU'))
     
