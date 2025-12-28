@@ -59,7 +59,7 @@ echo "  [2.2] Tokenizing German..."
 for split in train valid test; do
     echo "    - Processing ${split}.de..."
     cat data/wmt14_raw/${split}.clean.de | \
-        perl tokenizer. perl -l de -q -threads 4 > \
+        perl tokenizer.perl -l de -q -threads 4 > \
         data/wmt14_tokenized/${split}.de
 done
 
