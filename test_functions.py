@@ -4,10 +4,11 @@ Test individual functions from train.py
 """
 
 import sys
+import os
 import numpy as np
 
 # Add the current directory to the path
-sys.path.insert(0, '/home/runner/work/RNN/RNN')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 def test_calculate_perplexity():
     """Test perplexity calculation"""

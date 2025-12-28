@@ -5,8 +5,11 @@ This simulates what users will see during training.
 """
 
 import sys
+import os
 import time
-sys.path.insert(0, '/home/runner/work/RNN/RNN')
+
+# Add the current directory to the path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from train import calculate_perplexity, log_batch_statistics
 

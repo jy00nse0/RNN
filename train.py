@@ -220,9 +220,13 @@ def batch_reverse_source(src_tensor, pad_idx, batch_first=False):
     return rev_src
 
 
+# Constants for monitoring
+MAX_LOSS_FOR_PERPLEXITY = 100  # Cap for preventing overflow in perplexity calculation
+
+
 def calculate_perplexity(loss):
     """Calculate perplexity from cross-entropy loss"""
-    return np.exp(min(loss, 100))  # Cap to prevent overflow
+    return np.exp(min(loss, MAX_LOSS_FOR_PERPLEXITY))  # Cap to prevent overflow
 
 
 def log_batch_statistics(batch_idx, total_batches, loss, grad_norm, lr):
@@ -240,11 +244,17 @@ def generate_sample_translations(model, val_iter, metadata, vocab, num_samples=3
     samples = []
     
     with torch.no_grad():
-        for i, batch in enumerate(val_iter):
+        # Create a fresh iterator to avoid state conflicts
+        for i, batch in enumerate(iter(val_iter)):
             if i >= num_samples:
                 break
-                
+            
             question, answer = batch.question, batch.answer
+            
+            # Check if batch has data
+            if question.size(1) == 0 or answer.size(0) == 0:
+                continue
+                
             logits = model(question, answer)
             predictions = logits.argmax(dim=-1)
             
