@@ -74,11 +74,7 @@ def main():
 
     cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda' if cuda else 'cpu')
-    
-    # Set seeds for reproducibility
-    torch.manual_seed(42)
-    if cuda:
-        torch.cuda.manual_seed_all(42)
+
     
     print("Using %s for inference" % ('GPU' if cuda else 'CPU'))
 
