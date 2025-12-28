@@ -120,7 +120,7 @@ def test_default_teacher_forcing_ratio():
     sys.argv = ["train.py", "--dataset", "sample100k"]
     try:
         args = train_module.parse_args()
-        assert args.teacher_forcing_ratio == 1.0, "Default teacher_forcing_ratio should be 1.0 for stable training"
+        assert args.teacher_forcing_ratio == 0.0, "Default teacher_forcing_ratio should remain 0.0 per paper setup"
         print(f"  Default teacher_forcing_ratio: {args.teacher_forcing_ratio}")
         print("✅ teacher_forcing_ratio default test passed!\n")
     finally:

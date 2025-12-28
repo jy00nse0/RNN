@@ -2,7 +2,6 @@
 
 import os
 import argparse
-import warnings
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -41,12 +40,6 @@ New Optimizations:
 def validate_teacher_forcing_ratio(value: float):
     if not 0.0 <= value <= 1.0:
         raise ValueError("Teacher forcing ratio must be between 0 and 1.")
-    if value == 0.0:
-        warnings.warn(
-            "Teacher forcing ratio is 0. Decoder never sees target tokens during training; "
-            "loss may stagnate. Set --teacher-forcing-ratio > 0 for standard cross-entropy training.",
-            RuntimeWarning
-        )
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Script for training seq2seq chatbot.')
@@ -81,7 +74,7 @@ def parse_args():
                                'twitter-spotifycares', 'twitter-uber_support', 'twitter-all',
                                'twitter-small', 'wmt14-en-de', 'wmt15-deen', 'sample100k'],
                        help='Dataset for training model.')
-    parser.add_argument('--teacher-forcing-ratio', type=float, default=1.0,
+    parser.add_argument('--teacher-forcing-ratio', type=float, default=0.0,
                         help='Teacher forcing ratio used in seq2seq models. [0-1]')
     
     # [Paper] Experimental Setup
