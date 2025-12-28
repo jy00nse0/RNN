@@ -36,6 +36,11 @@ New Optimizations:
 5. TF32 and cuDNN benchmarking enabled
 """
 
+
+def validate_teacher_forcing_ratio(value: float):
+    if not 0.0 <= value <= 1.0:
+        raise ValueError("Teacher forcing ratio must be between 0 and 1.")
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Script for training seq2seq chatbot.')
     
@@ -70,7 +75,7 @@ def parse_args():
                                'twitter-small', 'wmt14-en-de', 'wmt15-deen', 'sample100k'],
                        help='Dataset for training model.')
     parser.add_argument('--teacher-forcing-ratio', type=float, default=0.0,
-                       help='Teacher forcing ratio used in seq2seq models. [0-1]')
+                        help='Teacher forcing ratio used in seq2seq models. [0-1]')
     
     # [Paper] Experimental Setup
     parser.add_argument('--reverse', action='store_true', 
@@ -147,6 +152,8 @@ def parse_args():
                                help='Attention layer hidden size. Used only with concat score function.')
 
     args = parser.parse_args()
+
+    validate_teacher_forcing_ratio(args.teacher_forcing_ratio)
 
     # [Note] Embeddings logic preserved but likely not used if training from scratch with vocab 50k
     if not args.embedding_type and not args.embedding_size:
