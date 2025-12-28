@@ -4,6 +4,7 @@ import subprocess
 import torch
 import sys
 import argparse
+from util import load_training_metrics, plot_loss_graph
 '''
 사용 가능한 실험 목록 출력 명령: 
 python test. py --list
@@ -525,7 +526,25 @@ def main():
                 continue
         # ================================================================
 
-        # 5. Final Evaluation Summary
+        # 5. Generate Loss Graph after training
+        metrics_file = os.path.join(save_path, 'training_metrics.jsonl')
+        if os.path.exists(metrics_file):
+            try:
+                print(f"\n>>> Generating loss graph...")
+                train_losses, val_losses = load_training_metrics(metrics_file)
+                
+                if train_losses and val_losses:
+                    loss_graph_path = os.path.join(save_path, 'loss_graph.png')
+                    plot_loss_graph(train_losses, val_losses, loss_graph_path)
+                    print(f"    Loss graph generated successfully!")
+                else:
+                    print(f"    Warning: No loss data found in metrics file")
+            except Exception as e:
+                print(f"    Error generating loss graph: {e}")
+        else:
+            print(f"    Warning: Metrics file not found: {metrics_file}")
+
+        # 6. Final Evaluation Summary
         print(f"\n>>> BLEU scores logged to: {bleu_log_file}")
         if os.path.exists(bleu_log_file):
             print("\n=== BLEU Score Summary ===")

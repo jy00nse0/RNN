@@ -1,5 +1,8 @@
 import torch.nn as nn
 import collections
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.pyplot as plt
 
 
 def embedding_size_from_name(name):
@@ -8,6 +11,71 @@ def embedding_size_from_name(name):
 
 def print_dim(name, tensor):
     print("%s -> %s" % (name, tensor.size()))
+
+
+def plot_loss_graph(train_losses, val_losses, save_path):
+    """
+    Plot training and validation loss graph and save as image.
+    
+    Args:
+        train_losses: List of training losses per epoch
+        val_losses: List of validation losses per epoch
+        save_path: Path to save the loss graph image (e.g., 'loss_graph.png')
+    """
+    import os
+    
+    # Create figure and axis
+    plt.figure(figsize=(10, 6))
+    
+    epochs = range(1, len(train_losses) + 1)
+    
+    # Plot training and validation losses
+    plt.plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
+    plt.plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
+    
+    # Add labels and title
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Loss', fontsize=12)
+    plt.title('Training and Validation Loss', fontsize=14, fontweight='bold')
+    plt.legend(loc='upper right', fontsize=10)
+    plt.grid(True, alpha=0.3)
+    
+    # Save the figure
+    os.makedirs(os.path.dirname(save_path) if os.path.dirname(save_path) else '.', exist_ok=True)
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Loss graph saved to: {save_path}")
+
+
+def load_training_metrics(metrics_file):
+    """
+    Load training metrics from JSON file.
+    
+    Args:
+        metrics_file: Path to the training_metrics.jsonl file
+        
+    Returns:
+        train_losses: List of training losses per epoch
+        val_losses: List of validation losses per epoch
+    """
+    import json
+    import os
+    
+    if not os.path.exists(metrics_file):
+        raise FileNotFoundError(f"Metrics file not found: {metrics_file}")
+    
+    train_losses = []
+    val_losses = []
+    
+    with open(metrics_file, 'r') as f:
+        for line in f:
+            if line.strip():
+                data = json.loads(line)
+                train_losses.append(data.get('train_loss', 0))
+                val_losses.append(data.get('val_loss', 0))
+    
+    return train_losses, val_losses
 
 
 class RNNWrapper(nn.Module):
