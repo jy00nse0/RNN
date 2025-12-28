@@ -17,6 +17,7 @@ START_TIME=$(date +%s)
 # =========================
 # Step 1: Raw 데이터 다운로드
 # =========================
+
 echo "Step 1/3: Downloading WMT14 dataset from Hugging Face..."
 echo "----------------------------------------------------------------------"
 python scripts/download_data.py
@@ -38,7 +39,7 @@ echo "----------------------------------------------------------------------"
 
 # 디렉토리 생성
 mkdir -p data/wmt14_tokenized
-
+mkdir -p data/wmt15_tokenized
 # Perl 스크립트 존재 확인
 if [ ! -f "tokenizer.perl" ]; then
     echo "Error: tokenizer. perl not found in current directory"
@@ -46,23 +47,37 @@ if [ ! -f "tokenizer.perl" ]; then
 fi
 
 # 영어 토큰화
-echo "  [2. 1] Tokenizing English..."
+echo "  [2. 1] Tokenizing English 14..."
 for split in train valid test; do
     echo "    - Processing ${split}. en..."
-    cat data/wmt14_raw/${split}.clean.en | \
+   cat data/wmt14_raw/${split}.clean.en | \
         perl tokenizer.perl -l en -q -threads 4 > \
         data/wmt14_tokenized/${split}.en
-done
-
+#done
+# 영어 토큰화
+echo "  [2. 1] Tokenizing English 15..."
+for split in train valid test; do
+    echo "    - Processing ${split}. en..."
+    cat data/wmt15_raw/${split}.clean.en | \
+        perl tokenizer.perl -l en -q -threads 4 > \
+        data/wmt15_tokenized/${split}.en
+#done
 # 독일어 토큰화
-echo "  [2.2] Tokenizing German..."
+echo "  [2.2] Tokenizing German 14..."
 for split in train valid test; do
     echo "    - Processing ${split}.de..."
     cat data/wmt14_raw/${split}.clean.de | \
         perl tokenizer.perl -l de -q -threads 4 > \
         data/wmt14_tokenized/${split}.de
 done
-
+# 독일어 토큰화
+echo "  [2.2] Tokenizing German 15..."
+for split in train valid test; do
+    echo "    - Processing ${split}.de..."
+    cat data/wmt15_raw/${split}.clean.de | \
+        perl tokenizer.perl -l de -q -threads 4 > \
+        data/wmt15_tokenized/${split}.de
+done
 echo ""
 echo "✓ Tokenization complete"
 echo ""
@@ -78,7 +93,11 @@ python scripts/process_data.py \
     --out_dir data/wmt14_vocab50k \
     --src_lang en \
     --tgt_lang de
-
+python scripts/process_data.py \
+    --raw_dir data/wmt15_tokenized \
+    --out_dir data/wmt15_vocab50k \
+    --src_lang en \
+    --tgt_lang de
 if [ $? -ne 0 ]; then
     echo "Error: Failed to process data"
     exit 1
@@ -133,3 +152,4 @@ echo ""
 echo "Next step: Run training with"
 echo "  python train.py --dataset wmt14-en-de --cuda"
 echo ""
+""
