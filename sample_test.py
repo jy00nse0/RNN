@@ -27,7 +27,7 @@ TEST_TGT = os.path.join(RAW_DATA_DIR, "test.de")
 ###############################################################################
 # 2. 샘플 데이터셋 생성
 ###############################################################################
-def make_sample_dataset(num_lines=1000):
+def make_sample_dataset(num_lines=500000):
     """
     Create a small sample dataset for quick testing.
     Using 1000 lines instead of 100k for reasonable testing time.
@@ -58,28 +58,28 @@ def make_sample_dataset(num_lines=1000):
     with open(VAL_SRC, "r", encoding="utf-8") as fin, \
          open(os.path.join(SAMPLE_DATA_DIR, "valid.en"), "w", encoding="utf-8") as fout:
         for i, line in enumerate(fin):
-            if i >= 100:
+            if i >= 20000:
                 break
             fout.write(line)
     
     with open(VAL_TGT, "r", encoding="utf-8") as fin, \
          open(os.path.join(SAMPLE_DATA_DIR, "valid.de"), "w", encoding="utf-8") as fout:
         for i, line in enumerate(fin):
-            if i >= 100:
+            if i >= 20000:
                 break
             fout.write(line)
     
     with open(TEST_SRC, "r", encoding="utf-8") as fin, \
          open(os.path.join(SAMPLE_DATA_DIR, "test.en"), "w", encoding="utf-8") as fout:
         for i, line in enumerate(fin):
-            if i >= 100:
+            if i >= 20000:
                 break
             fout.write(line)
     
     with open(TEST_TGT, "r", encoding="utf-8") as fin, \
          open(os.path.join(SAMPLE_DATA_DIR, "test.de"), "w", encoding="utf-8") as fout:
         for i, line in enumerate(fin):
-            if i >= 100:
+            if i >= 20000:
                 break
             fout.write(line)
 
@@ -106,16 +106,16 @@ def run_sample_training():
         f"python train.py "
         f"--dataset sample100k "
         f"--save-path {save_path} "
-        f"--max-epochs 1 "
-        f"--batch-size 32 "
+        f"--max-epochs 10 "
+        f"--batch-size 100 "
         f"--learning-rate 1.0 "
-        f"--encoder-hidden-size 256 "
-        f"--decoder-hidden-size 256 "
-        f"--encoder-num-layers 2 "
-        f"--decoder-num-layers 2 "
+        f"--encoder-hidden-size 1000 "
+        f"--decoder-hidden-size 1000 "
+        f"--encoder-num-layers 4 "
+        f"--decoder-num-layers 4 "
         f"--attention-type none "
         f"--reverse "
-        f"--teacher-forcing-ratio 1.0 "
+        f"--teacher-forcing-ratio 0.0 "
         f"{cuda_flag}"
     )
 
@@ -162,7 +162,7 @@ def run_sample_evaluation():
         f"python calculate_bleu.py "
         f"--model-path {model_path} "
         f"--reference-path {ref_path} "
-        f"--epoch 1 "
+        f"--epoch 10 "
         f"--cuda"
     )
 
