@@ -14,6 +14,9 @@ from serialization import save_object, save_model, save_vocab
 from datetime import datetime
 from util import embedding_size_from_name
 from tqdm import tqdm
+import numpy as np
+from collections import defaultdict
+import json
 
 """
 [Optimized] train.py for RNN Paper Reproduction
@@ -217,13 +220,72 @@ def batch_reverse_source(src_tensor, pad_idx, batch_first=False):
     return rev_src
 
 
-def evaluate(model, val_iter, metadata, reverse_src=False):
+def calculate_perplexity(loss):
+    """Calculate perplexity from cross-entropy loss"""
+    return np.exp(min(loss, 100))  # Cap to prevent overflow
+
+
+def log_batch_statistics(batch_idx, total_batches, loss, grad_norm, lr):
+    """Log detailed batch-level statistics"""
+    if batch_idx % 100 == 0:
+        perplexity = calculate_perplexity(loss)
+        print(f"  [Batch {batch_idx}/{total_batches}] "
+              f"Loss: {loss:.4f} | PPL: {perplexity:.2f} | "
+              f"Grad Norm: {grad_norm:.4f} | LR: {lr:.6f}")
+
+
+def generate_sample_translations(model, val_iter, metadata, vocab, num_samples=3, max_len=50):
+    """Generate sample translations to visualize model progress"""
+    model.eval()
+    samples = []
+    
+    with torch.no_grad():
+        for i, batch in enumerate(val_iter):
+            if i >= num_samples:
+                break
+                
+            question, answer = batch.question, batch.answer
+            logits = model(question, answer)
+            predictions = logits.argmax(dim=-1)
+            
+            # Take first item in batch
+            src_tokens = question[:, 0].cpu().tolist()
+            tgt_tokens = answer[1:, 0].cpu().tolist()
+            pred_tokens = predictions[:, 0].cpu().tolist()
+            
+            # Convert to words (filter padding)
+            src_words = [vocab.itos[idx] for idx in src_tokens if idx != metadata.padding_idx]
+            tgt_words = [vocab.itos[idx] for idx in tgt_tokens if idx != metadata.padding_idx]
+            pred_words = [vocab.itos[idx] for idx in pred_tokens if idx != metadata.padding_idx]
+            
+            samples.append({
+                'source': ' '.join(src_words),
+                'target': ' '.join(tgt_words),
+                'prediction': ' '.join(pred_words)
+            })
+    
+    return samples
+
+
+def save_training_metrics(save_path, epoch, metrics):
+    """Save training metrics to JSON file for later analysis"""
+    metrics_file = os.path.join(save_path, 'training_metrics.jsonl')
+    os.makedirs(save_path, exist_ok=True)
+    
+    with open(metrics_file, 'a') as f:
+        json.dump({'epoch': epoch, **metrics}, f)
+        f.write('\n')
+
+
+def evaluate(model, val_iter, metadata, reverse_src=False, verbose=False):
     """
     [OPTIMIZED] Evaluate model on validation set.
     - Changed view() to reshape() for safer tensor operations.
+    - Added perplexity calculation and min/max loss tracking
     """
     model.eval()
     total_loss = 0
+    batch_losses = []
     
     with torch.no_grad():
         for batch in tqdm(val_iter, desc="Evaluating", leave=False):
@@ -241,13 +303,24 @@ def evaluate(model, val_iter, metadata, reverse_src=False):
                 answer[1:].reshape(-1),
                 ignore_index=metadata.padding_idx
             )
+            batch_losses.append(loss.item())
             total_loss += loss.item()
     
-    return total_loss / len(val_iter)
+    avg_loss = total_loss / len(val_iter)
+    
+    if verbose:
+        perplexity = calculate_perplexity(avg_loss)
+        min_loss = min(batch_losses) if batch_losses else avg_loss
+        max_loss = max(batch_losses) if batch_losses else avg_loss
+        print(f"\n  📊 Validation Metrics:")
+        print(f"     Loss: {avg_loss:.4f} | Perplexity: {perplexity:.2f}")
+        print(f"     Min Loss: {min_loss:.4f} | Max Loss: {max_loss:.4f}")
+    
+    return avg_loss
 
 
 def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False, 
-          use_amp=False, scaler=None):
+          use_amp=False, scaler=None, epoch=0, save_path=None, vocab=None):
     """
     [OPTIMIZED] Train model for one epoch.
     
@@ -266,9 +339,13 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
         reverse_src: Whether to reverse source sequences
         use_amp: Whether to use automatic mixed precision
         scaler: GradScaler for AMP (required if use_amp=True)
+        epoch: Current epoch number
+        save_path: Path to save training metrics
+        vocab: Vocabulary for logging
     
     Returns:
-        Average training loss for the epoch
+        avg_loss: Average training loss for the epoch
+        stats: Dictionary with detailed statistics
     """
     # [OPTIMIZED] Enable performance optimizations
     torch.backends.cudnn.benchmark = True
@@ -277,8 +354,14 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
     
     model.train()
     total_loss = 0
+    batch_losses = []
+    grad_norms = []
     
-    for batch in tqdm(train_iter, desc="Training", leave=False):
+    # Get current learning rate
+    current_lr = optimizer.param_groups[0]['lr']
+    total_batches = len(train_iter)
+    
+    for batch_idx, batch in enumerate(tqdm(train_iter, desc="Training", leave=False)):
         question, answer = batch.question, batch.answer
         
         # [Feature] Reverse Source if flag is set
@@ -296,6 +379,12 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
                 ignore_index=metadata.padding_idx
             )
         
+        # Check for NaN/Inf
+        if not torch.isfinite(loss):
+            print(f"\n⚠️  WARNING: Non-finite loss detected at batch {batch_idx}!")
+            print(f"   Loss value: {loss.item()}")
+            continue
+        
         # [OPTIMIZED] AMP-aware backward and optimizer step
         if use_amp:
             # Scale loss and backward
@@ -303,7 +392,7 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
             
             # Unscale before gradient clipping (CRITICAL!)
             scaler.unscale_(optimizer)
-            clip_grad_norm_(model.parameters(), grad_clip)
+            grad_norm = clip_grad_norm_(model.parameters(), grad_clip)
             
             # Optimizer step with scaler
             scaler.step(optimizer)
@@ -315,12 +404,27 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
             # Standard training (FP32)
             optimizer.zero_grad()
             loss.backward()
-            clip_grad_norm_(model.parameters(), grad_clip)
+            grad_norm = clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
         
-        total_loss += loss.item()
+        # Track statistics
+        batch_loss = loss.item()
+        total_loss += batch_loss
+        batch_losses.append(batch_loss)
+        grad_norms.append(grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm)
+        
+        # Log batch statistics every 100 batches
+        log_batch_statistics(batch_idx, total_batches, batch_loss, grad_norms[-1], current_lr)
     
-    return total_loss / len(train_iter)
+    avg_loss = total_loss / len(train_iter)
+    avg_grad_norm = np.mean(grad_norms) if grad_norms else 0.0
+    
+    return avg_loss, {
+        'batch_losses': batch_losses,
+        'avg_grad_norm': avg_grad_norm,
+        'min_loss': min(batch_losses) if batch_losses else avg_loss,
+        'max_loss': max(batch_losses) if batch_losses else avg_loss
+    }
 
 
 def adjust_learning_rate(optimizer, epoch, decay_start):
@@ -413,6 +517,10 @@ def main():
         best_val_loss = None
         
         for epoch in range(args.max_epochs):
+            print("\n" + "=" * 70)
+            print(f"Epoch {epoch + 1}/{args.max_epochs}")
+            print("=" * 70)
+            
             start = datetime.now()
             
             # [Paper] LR Scheduling: Halve after specified epoch
@@ -420,7 +528,7 @@ def main():
                 adjust_learning_rate(optimizer, epoch, args.lr_decay_start)
 
             # Train for one epoch
-            train_loss = train(
+            train_loss, train_stats = train(
                 model=model,
                 optimizer=optimizer,
                 train_iter=train_iter,
@@ -428,7 +536,10 @@ def main():
                 grad_clip=args.gradient_clip,
                 reverse_src=args.reverse,
                 use_amp=use_amp,
-                scaler=scaler
+                scaler=scaler,
+                epoch=epoch,
+                save_path=args.save_path,
+                vocab=vocab
             )
             
             # Evaluate on validation set
@@ -436,21 +547,53 @@ def main():
                 model=model,
                 val_iter=val_iter,
                 metadata=metadata,
-                reverse_src=args.reverse
+                reverse_src=args.reverse,
+                verbose=True
             )
             
-            # Print epoch results
+            # Generate and display sample translations
+            print("\n  🔍 Sample Translations:")
+            samples = generate_sample_translations(model, val_iter, metadata, vocab, num_samples=2)
+            for i, sample in enumerate(samples, 1):
+                print(f"\n  Example {i}:")
+                print(f"    SRC: {sample['source']}")
+                print(f"    TGT: {sample['target']}")
+                print(f"    PRD: {sample['prediction']}")
+            
+            # Calculate metrics
             elapsed = datetime.now() - start
-            print(f"[Epoch {epoch + 1:2d}/{args.max_epochs}] "
-                  f"train_loss: {train_loss:.4f} - "
-                  f"val_loss: {val_loss:.4f} - "
-                  f"time: {elapsed}", end='')
+            train_ppl = calculate_perplexity(train_loss)
+            val_ppl = calculate_perplexity(val_loss)
+            
+            # Print epoch summary
+            print("\n" + "=" * 70)
+            print(f"[Epoch {epoch + 1:2d}/{args.max_epochs}] Summary:")
+            print(f"  Train Loss: {train_loss:.4f} | Train PPL: {train_ppl:.2f}")
+            print(f"  Val Loss:   {val_loss:.4f} | Val PPL:   {val_ppl:.2f}")
+            print(f"  Avg Grad Norm: {train_stats['avg_grad_norm']:.4f}")
+            print(f"  Time: {elapsed}")
+            print("=" * 70)
+
+            # Save training metrics to file
+            metrics = {
+                'train_loss': train_loss,
+                'train_ppl': train_ppl,
+                'val_loss': val_loss,
+                'val_ppl': val_ppl,
+                'avg_grad_norm': train_stats['avg_grad_norm'],
+                'min_train_loss': train_stats['min_loss'],
+                'max_train_loss': train_stats['max_loss'],
+                'time_seconds': elapsed.total_seconds()
+            }
+            save_training_metrics(args.save_path, epoch + 1, metrics)
 
             # Save model
             if args.save_every_epoch or not best_val_loss or val_loss < best_val_loss:
-                print(' (Saving model...', end='', flush=True)
+                if best_val_loss is None:
+                    print(f"\n💾 Saving model (initial save, val_loss: {val_loss:.4f})")
+                else:
+                    print(f"\n💾 Saving model (val_loss improved: {best_val_loss:.4f} → {val_loss:.4f})")
                 save_model(args.save_path, model, epoch + 1, train_loss, val_loss)
-                print('Done)', end='')
                 best_val_loss = val_loss
             
             print()  # New line
