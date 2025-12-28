@@ -37,10 +37,10 @@ def main():
             self.decoder_rnn_dropout = 0.2
             self.luong_attn_hidden_size = 256
             self.luong_input_feed = False
-            self.decoder_init_type = 'zeros'
+            self.decoder_init_type = 'adjust_pad'  # Use encoder outputs
             
             # Attention configuration
-            self.attention_type = 'none'
+            self.attention_type = 'global'  # Use attention to get gradients to encoder
             self.attention_score = 'dot'
             
             # Embedding configuration (matching paper settings)

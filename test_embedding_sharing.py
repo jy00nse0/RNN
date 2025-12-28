@@ -31,10 +31,10 @@ class Args:
         self.decoder_rnn_dropout = 0.0
         self.luong_attn_hidden_size = 32
         self.luong_input_feed = False
-        self.decoder_init_type = 'zeros'
+        self.decoder_init_type = 'adjust_pad'  # Changed from 'zeros' to use encoder outputs
         
         # Attention args
-        self.attention_type = 'none'
+        self.attention_type = 'global'  # Changed from 'none' to use encoder outputs
         self.attention_score = 'dot'
         
         # Embedding args
@@ -92,15 +92,15 @@ def test_gradient_accumulation():
     model = train_model_factory(args, metadata, metadata)
     model.train()
     
-    # Create dummy input tensors
-    question = torch.randint(0, vocab_size, (seq_len, batch_size))
-    answer = torch.randint(0, vocab_size, (seq_len, batch_size))
+    # Create dummy input tensors (avoid index 0 which is padding)
+    question = torch.randint(1, vocab_size, (seq_len, batch_size))
+    answer = torch.randint(1, vocab_size, (seq_len, batch_size))
     
     # Forward pass
     outputs = model(question, answer)
     
-    # Create dummy target and compute loss
-    target = torch.randint(0, vocab_size, (seq_len - 1, batch_size))
+    # Create dummy target and compute loss (avoid index 0 which is padding)
+    target = torch.randint(1, vocab_size, (seq_len - 1, batch_size))
     loss_fn = nn.CrossEntropyLoss()
     
     # Reshape for loss calculation
