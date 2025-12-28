@@ -111,6 +111,21 @@ def test_save_training_metrics():
         # Cleanup
         shutil.rmtree(temp_dir)
 
+def test_default_teacher_forcing_ratio():
+    """Ensure default teacher forcing uses teacher signals"""
+    print("Testing default teacher_forcing_ratio...")
+    import train as train_module
+
+    original_argv = sys.argv.copy()
+    sys.argv = ["train.py", "--dataset", "sample100k"]
+    try:
+        args = train_module.parse_args()
+        assert args.teacher_forcing_ratio == 1.0, "Default teacher_forcing_ratio should be 1.0 for stable training"
+        print(f"  Default teacher_forcing_ratio: {args.teacher_forcing_ratio}")
+        print("✅ teacher_forcing_ratio default test passed!\n")
+    finally:
+        sys.argv = original_argv
+
 def main():
     """Run all tests"""
     print("=" * 70)
@@ -121,6 +136,7 @@ def main():
         test_calculate_perplexity()
         test_log_batch_statistics()
         test_save_training_metrics()
+        test_default_teacher_forcing_ratio()
         
         print("=" * 70)
         print("✅ All function tests passed!")

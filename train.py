@@ -69,8 +69,8 @@ def parse_args():
                                'twitter-spotifycares', 'twitter-uber_support', 'twitter-all',
                                'twitter-small', 'wmt14-en-de', 'wmt15-deen', 'sample100k'],
                        help='Dataset for training model.')
-    parser.add_argument('--teacher-forcing-ratio', type=float, default=0.0,
-                       help='Teacher forcing ratio used in seq2seq models. [0-1]')
+    parser.add_argument('--teacher-forcing-ratio', type=float, default=1.0,
+                        help='Teacher forcing ratio used in seq2seq models. [0-1]')
     
     # [Paper] Experimental Setup
     parser.add_argument('--reverse', action='store_true', 
@@ -147,6 +147,12 @@ def parse_args():
                                help='Attention layer hidden size. Used only with concat score function.')
 
     args = parser.parse_args()
+
+    if not 0.0 <= args.teacher_forcing_ratio <= 1.0:
+        raise ValueError("Teacher forcing ratio must be between 0 and 1.")
+    if args.teacher_forcing_ratio == 0.0:
+        print("⚠️  Teacher forcing ratio is 0. Decoder never sees target tokens during training; "
+              "loss may stagnate. Set --teacher-forcing-ratio > 0 for standard cross-entropy training.")
 
     # [Note] Embeddings logic preserved but likely not used if training from scratch with vocab 50k
     if not args.embedding_type and not args.embedding_size:
