@@ -182,7 +182,11 @@ def dataset_factory(args, device):
     )
     
     # Build SRC/TGT metadata separately
+    # Note: Both vocabs have '<pad>' at index 0 by construction in Vocab class
     pad_idx_src = train_dataset.src_vocab.stoi.get('<pad>', 0)
+    pad_idx_tgt = train_dataset.tgt_vocab.stoi.get('<pad>', 0)
+    assert pad_idx_src == 0 and pad_idx_tgt == 0, "Padding token must be at index 0"
+    
     src_metadata = Metadata(vocab_size=len(train_dataset.src_vocab), padding_idx=pad_idx_src, vectors=None)
     tgt_metadata = Metadata(vocab_size=len(train_dataset.tgt_vocab), padding_idx=pad_idx_tgt, vectors=None)
     

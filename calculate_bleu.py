@@ -99,8 +99,11 @@ def main():
 
     # Create a simple field wrapper for vocab
     field = SimpleField(vocab)
-    # For inference, we need both src and tgt metadata
-    # Since saved vocab is TGT vocab, we create metadata for both
+    # For inference, we need both src and tgt metadata.
+    # Note: During training, only TGT vocab is saved. For same-direction translation
+    # (e.g., model trained on en-de and used on en-de), using TGT vocab for both
+    # is acceptable since the vocabularies are built from the same dataset.
+    # For cross-direction inference or different vocab sizes, both vocabs should be saved.
     tgt_metadata = metadata_factory(model_args, vocab)
     src_metadata = metadata_factory(model_args, vocab)
 

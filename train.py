@@ -238,7 +238,7 @@ def log_batch_statistics(batch_idx, total_batches, loss, grad_norm, lr):
               f"Grad Norm: {grad_norm:.4f} | LR: {lr:.6f}")
 
 
-def generate_sample_translations(model, val_iter, metadata, vocab, num_samples=3, max_len=50):
+def generate_sample_translations(model, val_iter, tgt_metadata, src_vocab, tgt_vocab, num_samples=3, max_len=50):
     """Generate sample translations to visualize model progress"""
     model.eval()
     samples = []
@@ -263,10 +263,10 @@ def generate_sample_translations(model, val_iter, metadata, vocab, num_samples=3
             tgt_tokens = answer[1:, 0].cpu().tolist()
             pred_tokens = predictions[:, 0].cpu().tolist()
             
-            # Convert to words (filter padding)
-            src_words = [vocab.itos[idx] for idx in src_tokens if idx != metadata.padding_idx]
-            tgt_words = [vocab.itos[idx] for idx in tgt_tokens if idx != metadata.padding_idx]
-            pred_words = [vocab.itos[idx] for idx in pred_tokens if idx != metadata.padding_idx]
+            # Convert to words (filter padding) - use correct vocab for each
+            src_words = [src_vocab.itos[idx] for idx in src_tokens if idx < len(src_vocab.itos)]
+            tgt_words = [tgt_vocab.itos[idx] for idx in tgt_tokens if idx < len(tgt_vocab.itos)]
+            pred_words = [tgt_vocab.itos[idx] for idx in pred_tokens if idx < len(tgt_vocab.itos)]
             
             samples.append({
                 'source': ' '.join(src_words),
@@ -563,7 +563,7 @@ def main():
             
             # Generate and display sample translations
             print("\n  🔍 Sample Translations:")
-            samples = generate_sample_translations(model, val_iter, tgt_metadata, tgt_vocab, num_samples=2)
+            samples = generate_sample_translations(model, val_iter, tgt_metadata, src_vocab, tgt_vocab, num_samples=2)
             for i, sample in enumerate(samples, 1):
                 print(f"\n  Example {i}:")
                 print(f"    SRC: {sample['source']}")
