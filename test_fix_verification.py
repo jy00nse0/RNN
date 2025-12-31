@@ -16,7 +16,7 @@ def test_fix_with_padding():
     print("TEST 1: PADDED SEQUENCE")
     print("="*70)
     
-    # After fix: All sequences have format [SOS, tok1, ..., tokN, EOS, PAD]
+    # After fix: All sequences have format [SOS, tok1, ..., tokN, EOS, PAD, PAD]
     # Example: [SOS, A, B, EOS, PAD, PAD]
     answer = torch.tensor([[0], [5], [6], [1], [2], [2]])
     answer_seq_len = answer.size(0)

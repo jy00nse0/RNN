@@ -68,7 +68,7 @@ class TranslationDataset(Dataset):
         # [Fix] Add 2 PAD tokens after EOS to ensure decoder never uses EOS as input
         # This prevents the decoder from learning incorrect patterns when EOS is fed as input
         # Format: [SOS, tok1, ..., tokN, EOS, PAD, PAD]
-        # With range(seq_len - 2), last input will be the token before EOS
+        # With range(seq_len - 3), last input will be tokN (the token before EOS)
         tgt = ['<sos>'] + self.tgt_sentences[idx] + ['<eos>'] + ['<pad>'] + ['<pad>']
         
         src_indices = torch.tensor(self.src_vocab.encode(src), dtype=torch.long)

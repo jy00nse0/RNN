@@ -261,6 +261,7 @@ def generate_sample_translations(model, val_iter, tgt_metadata, src_vocab, tgt_v
             # Take first item in batch
             src_tokens = question[:, 0].cpu().tolist()
             # [Fix] Target tokens should match label slicing: answer[1:-2]
+            # Excludes SOS at position 0 and last 2 tokens (2nd EOS and PAD from dataset padding)
             tgt_tokens = answer[1:-2, 0].cpu().tolist()
             pred_tokens = predictions[:, 0].cpu().tolist()
             
