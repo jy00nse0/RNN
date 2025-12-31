@@ -23,21 +23,29 @@ class Seq2SeqTrain(nn.Module):
         self.apply(init_weights)
 
     def forward(self, question, answer):
-        # [기존 코드 유지]
+        # [Fix] Prevent decoder from using EOS/PAD as inputs
+        # Answer format with padding: [SOS, tok1, ..., tokN, EOS, PAD, PAD, ...]
+        # We loop for (answer_seq_len - 3) iterations to ensure:
+        # - We never use EOS or PAD tokens as inputs
+        # - Last decoder input: tokN (the last content token)
+        # - Last decoder output/label: EOS
+        # - Decoder inputs: [SOS, tok1, ..., tokN] 
+        # - Decoder outputs/labels: [tok1, ..., tokN, EOS]
+        # - PAD predictions are ignored in the loss via ignore_index
         answer_seq_len = answer.size(0)
         batch_size = answer.size(1)
         
         encoder_outputs, h_n = self.encoder(question)
 
         # Pre-allocate output tensor to avoid repeated concatenation
-        # Shape: (seq_len-1, batch_size, vocab_size)
+        # Shape: (seq_len-3, batch_size, vocab_size)
         # Use encoder_outputs dtype to match model precision (supports mixed precision)
-        outputs = torch.empty(answer_seq_len - 1, batch_size, self.vocab_size,
+        outputs = torch.empty(answer_seq_len - 3, batch_size, self.vocab_size,
                              dtype=encoder_outputs.dtype, device=answer.device)
         
         kwargs = {}
         input_word = answer[0]  
-        for t in range(answer_seq_len - 1):
+        for t in range(answer_seq_len - 3):
             output, attn_weights, kwargs = self.decoder(t, input_word, encoder_outputs, h_n, **kwargs)
 
             # Fill pre-allocated tensor in-place (no concatenation needed)

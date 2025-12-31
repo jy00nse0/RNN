@@ -260,7 +260,9 @@ def generate_sample_translations(model, val_iter, tgt_metadata, src_vocab, tgt_v
             
             # Take first item in batch
             src_tokens = question[:, 0].cpu().tolist()
-            tgt_tokens = answer[1:, 0].cpu().tolist()
+            # [Fix] Target tokens should match label slicing: answer[1:-2]
+            # Excludes SOS at position 0 and last 2 tokens (2nd EOS and PAD from dataset padding)
+            tgt_tokens = answer[1:-2, 0].cpu().tolist()
             pred_tokens = predictions[:, 0].cpu().tolist()
             
             # Convert to words (filter padding and invalid indices) - use correct vocab for each
@@ -299,6 +301,7 @@ def evaluate(model, val_iter, metadata, reverse_src=False, verbose=False):
     [OPTIMIZED] Evaluate model on validation set.
     - Changed view() to reshape() for safer tensor operations.
     - Added perplexity calculation and min/max loss tracking
+    - [Fix] Updated label slicing to match decoder output shape
     """
     model.eval()
     total_loss = 0
@@ -314,10 +317,11 @@ def evaluate(model, val_iter, metadata, reverse_src=False, verbose=False):
             
             logits = model(question, answer)
             
+            # [Fix] Match label slicing with decoder output shape (answer[1:-2])
             # [OPTIMIZED] reshape() instead of view() - safer, handles non-contiguous tensors
             loss = F.cross_entropy(
                 logits.reshape(-1, metadata.vocab_size),
-                answer[1:].reshape(-1),
+                answer[1:-2].reshape(-1),
                 ignore_index=metadata.padding_idx
             )
             batch_losses.append(loss.item())
@@ -389,10 +393,13 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
         with autocast(enabled=use_amp):
             logits = model(question, answer)
             
+            # [Fix] Match label slicing with decoder output shape
+            # Decoder now outputs (seq_len-3) predictions
+            # Labels should be answer[1:-2] to match (excludes SOS and last 2 tokens: EOS+PAD)
             # [OPTIMIZED] reshape() instead of view()
             loss = F.cross_entropy(
                 logits.reshape(-1, metadata.vocab_size),
-                answer[1:].reshape(-1),
+                answer[1:-2].reshape(-1),
                 ignore_index=metadata.padding_idx
             )
         
