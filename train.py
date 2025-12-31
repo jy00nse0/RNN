@@ -388,7 +388,8 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
         # [OPTIMIZED] AMP context (no-op if use_amp=False)
         with autocast(enabled=use_amp):
             logits = model(question, answer)
-            
+            # Shifted labels: remove <sos>
+            target_label = answer[1:]  # (tgt_len-1, batch)
             # [OPTIMIZED] reshape() instead of view()
             loss = F.cross_entropy(
                 logits.reshape(-1, metadata.vocab_size),
