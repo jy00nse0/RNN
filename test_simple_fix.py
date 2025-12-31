@@ -35,7 +35,7 @@ class SimpleArgs:
         self.decoder_type = 'luong'
         self.luong_attn_hidden_size = 128
         self.luong_input_feed = False
-        self.decoder_init_type = 'zeros'  # Fixed: 'zeros' not 'zero'
+        self.decoder_init_type = 'zeros'
         self.embedding_share = False
         self.embedding_type = None
         self.train_embeddings = True

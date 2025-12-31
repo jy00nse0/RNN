@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-Test to demonstrate the decoder input/label slicing bug.
+Demonstration of the decoder input/label slicing bug.
 
-This test shows that the current implementation incorrectly uses EOS and PAD
+NOTE: This is a DEMONSTRATION file showing the bug conceptually,
+not a runnable test. It traces through the logic manually to show
+what was happening before the fix.
+
+This demonstrates that the OLD implementation incorrectly used EOS and PAD
 tokens as decoder inputs during training.
 """
 
