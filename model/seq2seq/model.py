@@ -28,24 +28,35 @@ class Seq2SeqTrain(nn.Module):
         batch_size = answer.size(1)
         
         encoder_outputs, h_n = self.encoder(question)
-
+        
+        # Explicit slicing for decoder input and labels
+        # answer: (tgt_len, batch)
+        decoder_input = answer[:-1]   # (tgt_len-1, batch)  <sos> ... 마지막 단어
+        target_label = answer[1:]     # (tgt_len-1, batch)  첫 단어 ... <eos>
+        
         # Pre-allocate output tensor to avoid repeated concatenation
         # Shape: (seq_len-1, batch_size, vocab_size)
         # Use encoder_outputs dtype to match model precision (supports mixed precision)
-        outputs = torch.empty(answer_seq_len - 1, batch_size, self.vocab_size,
-                             dtype=encoder_outputs.dtype, device=answer.device)
-        
+        #outputs = torch.empty(answer_seq_len - 1, batch_size, self.vocab_size,
+        #                    dtype=encoder_outputs.dtype, device=answer.device)
+        outputs = torch.empty(
+            decoder_input.size(0), batch_size, self.vocab_size,
+            dtype=encoder_outputs.dtype, device=answer.device
+        )
         kwargs = {}
         input_word = answer[0]  
-        for t in range(answer_seq_len - 1):
+        input_word = decoder_input[0]
+        #for t in range(answer_seq_len - 1):
+        for t in range(decoder_input.size(0)):
             output, attn_weights, kwargs = self.decoder(t, input_word, encoder_outputs, h_n, **kwargs)
-
+            
             # Fill pre-allocated tensor in-place (no concatenation needed)
             outputs[t] = output
 
             teacher_forcing = random.random() < self.teacher_forcing_ratio
             if teacher_forcing:
-                input_word = answer[t + 1]  
+                #input_word = answer[t + 1]  
+                input_word = target_label[t]
             else:
                 _, argmax = output.max(dim=1)
                 input_word = argmax  
