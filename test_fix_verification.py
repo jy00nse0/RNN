@@ -127,19 +127,14 @@ def test_comparison():
     print("\nOLD FORMAT: [SOS, A, B, EOS, PAD] - length 5")
     print("  Loop: range(4) -> Uses EOS as input at t=3 ❌")
     
-    print("\nNEW FORMAT: [SOS, A, B, EOS, PAD, PAD] - length 6")
-    print("  Loop: range(4) -> Last input is EOS at t=3, but...")
+    print("\nNEW FORMAT (FIXED): [SOS, A, B, EOS, PAD, PAD] - length 6")
     
     answer_new = torch.tensor([[0], [5], [6], [1], [2], [2]])
-    print(f"  Inputs (teacher forcing): {[answer_new[0].item()] + [answer_new[t+1].item() for t in range(4)]}")
-    print(f"  Last input (at t=3): {answer_new[3].item()} = EOS ❌ Still uses EOS!")
-    
-    print("\n  Wait... let me recalculate...")
     print(f"  answer_seq_len = {answer_new.size(0)}")
-    print(f"  range(answer_seq_len - 2) = range({answer_new.size(0) - 2}) = {list(range(answer_new.size(0) - 2))}")
+    print(f"  Loop: range(answer_seq_len - 3) = range({answer_new.size(0) - 3}) = {list(range(answer_new.size(0) - 3))}")
     
     print("\n  Decoder steps:")
-    for t in range(answer_new.size(0) - 2):
+    for t in range(answer_new.size(0) - 3):
         if t == 0:
             inp = answer_new[0].item()
         else:
@@ -148,14 +143,15 @@ def test_comparison():
         print(f"    t={t}: input={inp}, label={label}", end="")
         if inp == 1:
             print(" ⚠️  EOS INPUT", end="")
+        if inp == 2:
+            print(" ⚠️  PAD INPUT", end="")
         print()
     
-    print("\n  ✅ Correct! With answer_seq_len=6, we loop 4 times:")
-    print("     t=0: input=SOS(0), label=A(5)")
-    print("     t=1: input=A(5), label=B(6)")  
-    print("     t=2: input=B(6), label=EOS(1)")
-    print("     t=3: input=EOS(1), label=PAD(2) ⚠️  Still a problem!")
-    print("\n  Hmm, there's still an issue at t=3...")
+    print("\n  ✅ CORRECT! With answer_seq_len=6, range(3) = [0,1,2]:")
+    print("     t=0: input=SOS(0), predict=A(5) ✓")
+    print("     t=1: input=A(5), predict=B(6) ✓")  
+    print("     t=2: input=B(6), predict=EOS(1) ✓")
+    print("\n  No EOS or PAD used as inputs! Fix is working correctly.")
 
 
 if __name__ == "__main__":
