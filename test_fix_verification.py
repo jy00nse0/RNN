@@ -26,14 +26,14 @@ def test_fix_with_padding():
     print(f"Length: {answer_seq_len}")
     
     print(f"\nFixed training loop:")
-    print(f"  Loop range: range({answer_seq_len} - 2) = range({answer_seq_len - 2}) = {list(range(answer_seq_len - 2))}")
+    print(f"  Loop range: range({answer_seq_len} - 3) = range({answer_seq_len - 3}) = {list(range(answer_seq_len - 3))}")
     
     print(f"\nDecoder steps (with teacher forcing):")
     
     input_word = answer[0]
     has_bug = False
     
-    for t in range(answer_seq_len - 2):
+    for t in range(answer_seq_len - 3):
         output_idx = t
         label = answer[t + 1]
         
@@ -50,15 +50,15 @@ def test_fix_with_padding():
         # Teacher forcing
         input_word = answer[t + 1]
     
-    print(f"\nOutputs shape: ({answer_seq_len - 2}, batch, vocab)")
-    print(f"Labels: answer[1:-1] = {answer[1:-1].squeeze().tolist()}")
-    print(f"Labels shape: ({len(answer[1:-1])}, batch)")
+    print(f"\nOutputs shape: ({answer_seq_len - 3}, batch, vocab)")
+    print(f"Labels: answer[1:-2] = {answer[1:-2].squeeze().tolist()}")
+    print(f"Labels shape: ({len(answer[1:-2])}, batch)")
     
-    shapes_match = (answer_seq_len - 2) == len(answer[1:-1])
+    shapes_match = (answer_seq_len - 3) == len(answer[1:-2])
     
     print(f"\n{'✅' if not has_bug else '❌'} Decoder inputs: {'No EOS/PAD' if not has_bug else 'Contains EOS/PAD'}")
     print(f"{'✅' if shapes_match else '❌'} Shape matching: {'Outputs and labels match' if shapes_match else 'Mismatch!'}")
-    print(f"{'✅' if 1 in answer[1:-1].squeeze().tolist() else '❌'} EOS prediction: {'Included' if 1 in answer[1:-1].squeeze().tolist() else 'Missing'}")
+    print(f"{'✅' if 1 in answer[1:-2].squeeze().tolist() else '❌'} EOS prediction: {'Included' if 1 in answer[1:-2].squeeze().tolist() else 'Missing'}")
     
     return not has_bug and shapes_match
 
@@ -69,24 +69,24 @@ def test_fix_without_padding():
     print("TEST 2: SEQUENCE WITHOUT EXTRA PADDING (max length in batch)")
     print("="*70)
     
-    # After fix: Even the longest sequence has a PAD at the end
-    # Example: [SOS, X, Y, Z, EOS, PAD]
-    answer = torch.tensor([[0], [10], [11], [12], [1], [2]])
+    # After fix: Even the longest sequence has 2 PADs at the end
+    # Example: [SOS, X, Y, Z, EOS, PAD, PAD]
+    answer = torch.tensor([[0], [10], [11], [12], [1], [2], [2]])
     answer_seq_len = answer.size(0)
     
     print(f"\nSequence: {answer.squeeze().tolist()}")
-    print(f"  SOS=0, X=10, Y=11, Z=12, EOS=1, PAD=2")
+    print(f"  SOS=0, X=10, Y=11, Z=12, EOS=1, PAD=2, PAD=2")
     print(f"Length: {answer_seq_len}")
     
     print(f"\nFixed training loop:")
-    print(f"  Loop range: range({answer_seq_len} - 2) = {list(range(answer_seq_len - 2))}")
+    print(f"  Loop range: range({answer_seq_len} - 3) = {list(range(answer_seq_len - 3))}")
     
     print(f"\nDecoder steps:")
     
     input_word = answer[0]
     has_bug = False
     
-    for t in range(answer_seq_len - 2):
+    for t in range(answer_seq_len - 3):
         output_idx = t
         label = answer[t + 1]
         
@@ -102,11 +102,11 @@ def test_fix_without_padding():
         
         input_word = answer[t + 1]
     
-    print(f"\nOutputs shape: ({answer_seq_len - 2}, batch, vocab)")
-    print(f"Labels: answer[1:-1] = {answer[1:-1].squeeze().tolist()}")
+    print(f"\nOutputs shape: ({answer_seq_len - 3}, batch, vocab)")
+    print(f"Labels: answer[1:-2] = {answer[1:-2].squeeze().tolist()}")
     
-    shapes_match = (answer_seq_len - 2) == len(answer[1:-1])
-    eos_in_labels = 1 in answer[1:-1].squeeze().tolist()
+    shapes_match = (answer_seq_len - 3) == len(answer[1:-2])
+    eos_in_labels = 1 in answer[1:-2].squeeze().tolist()
     
     print(f"\n{'✅' if not has_bug else '❌'} Decoder inputs: {'No EOS/PAD' if not has_bug else 'Contains EOS/PAD'}")
     print(f"{'✅' if shapes_match else '❌'} Shape matching: {'Outputs and labels match' if shapes_match else 'Mismatch!'}")
