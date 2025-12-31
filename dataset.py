@@ -60,7 +60,11 @@ class TranslationDataset(Dataset):
         return len(self.src_sentences)
     
     def __getitem__(self, idx):
-        src = ['<sos>'] + self.src_sentences[idx] + ['<eos>']
+        # 1. Source 처리: <sos> 제거
+        # Encoder는 문장을 읽기만 하면 되므로 시작 토큰 불필요
+        src = self.src_sentences[idx] + ['<eos>'] 
+        
+        # 2. Target 처리: 학습용 전체 시퀀스 생성
         tgt = ['<sos>'] + self.tgt_sentences[idx] + ['<eos>']
         
         src_indices = torch.tensor(self.src_vocab.encode(src), dtype=torch.long)
