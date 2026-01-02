@@ -50,17 +50,39 @@ class GreedySampler(SequenceSampler):
         sequences = None
 
         input_word = torch.tensor([sos_idx] * batch_size, device=device)
+        # Track which sequences have finished (encountered EOS)
+        finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
         kwargs = {}
         for t in range(max_length):
             output, attn_weights, kwargs = decoder(t, input_word, encoder_outputs, h_n, **kwargs)
             _, argmax = output.max(dim=1)  # greedily take the most probable word
+            
+            # For finished sequences, keep outputting EOS to avoid changing the sequence
+            argmax = torch.where(finished, torch.tensor(eos_idx, device=device), argmax)
+            
             input_word = argmax
             argmax = argmax.unsqueeze(1)  # (batch) -> (batch, 1) because of concatenating to sequences
             sequences = argmax if sequences is None else torch.cat([sequences, argmax], dim=1)
+            
+            # Update finished mask: mark sequences that just generated EOS
+            finished = finished | (input_word == eos_idx)
+            
+            # Early exit if all sequences have finished
+            if finished.all():
+                break
 
-        # ensure there is EOS token at the end of every sequence (important for calculating lengths)
-        end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)  # (batch, 1)
-        sequences = torch.cat([sequences, end], dim=1)
+        # Only append EOS to sequences that haven't generated it yet
+        needs_eos = ~finished
+        if needs_eos.any():
+            # Append EOS only to unfinished sequences
+            end = torch.where(needs_eos.unsqueeze(1), 
+                            torch.tensor(eos_idx, device=device), 
+                            sequences[:, -1].unsqueeze(1))
+            sequences = torch.cat([sequences, end], dim=1)
+        else:
+            # All sequences finished naturally, still append EOS for length calculation
+            end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)
+            sequences = torch.cat([sequences, end], dim=1)
 
         # calculate lengths
         _, lengths = (sequences == eos_idx).max(dim=1)
@@ -92,16 +114,40 @@ class RandomSampler(SequenceSampler):
         sequences = None
 
         input_word = torch.tensor([sos_idx] * batch_size, device=device)
+        # Track which sequences have finished (encountered EOS)
+        finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
         kwargs = {}
         for t in range(max_length):
             output, attn_weights, kwargs = decoder(t, input_word, encoder_outputs, h_n, **kwargs)
             indices = torch.multinomial(F.softmax(output, dim=1), 1)  # roulette-wheel selection of tokens with probability as weights (batch, 1)
-            input_word = indices.squeeze(1)  # (batch, 1) -> (batch)
+            
+            # For finished sequences, keep outputting EOS to avoid changing the sequence
+            sampled_tokens = indices.squeeze(1)  # (batch, 1) -> (batch)
+            sampled_tokens = torch.where(finished, torch.tensor(eos_idx, device=device), sampled_tokens)
+            
+            input_word = sampled_tokens
+            indices = sampled_tokens.unsqueeze(1)  # (batch) -> (batch, 1)
             sequences = indices if sequences is None else torch.cat([sequences, indices], dim=1)
+            
+            # Update finished mask: mark sequences that just generated EOS
+            finished = finished | (input_word == eos_idx)
+            
+            # Early exit if all sequences have finished
+            if finished.all():
+                break
 
-        # ensure there is EOS token at the end of every sequence (important for calculating lengths)
-        end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)  # (batch, 1)
-        sequences = torch.cat([sequences, end], dim=1)
+        # Only append EOS to sequences that haven't generated it yet
+        needs_eos = ~finished
+        if needs_eos.any():
+            # Append EOS only to unfinished sequences
+            end = torch.where(needs_eos.unsqueeze(1), 
+                            torch.tensor(eos_idx, device=device), 
+                            sequences[:, -1].unsqueeze(1))
+            sequences = torch.cat([sequences, end], dim=1)
+        else:
+            # All sequences finished naturally, still append EOS for length calculation
+            end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)
+            sequences = torch.cat([sequences, end], dim=1)
 
         # calculate lengths
         _, lengths = (sequences == eos_idx).max(dim=1)
@@ -152,15 +198,33 @@ class BeamSearch(SequenceSampler):
     def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length):
         batch_size = encoder_outputs.size(1)
         device = encoder_outputs.device
-        sequences = None
+        all_sequences = []
 
         for batch in range(batch_size):
-            seq = self._sample(encoder_outputs[:, batch, :].unsqueeze(1), h_n[:, batch, :].unsqueeze(1), decoder, sos_idx, eos_idx, max_length, device).unsqueeze(0)
-            sequences = seq if sequences is None else torch.cat([sequences, seq], dim=1)
-
-        # ensure there is EOS token at the end of every sequence (important for calculating lengths)
-        end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)  # (batch, 1)
-        sequences = torch.cat([sequences, end], dim=1)
+            seq = self._sample(encoder_outputs[:, batch, :].unsqueeze(1), h_n[:, batch, :].unsqueeze(1), decoder, sos_idx, eos_idx, max_length, device)
+            all_sequences.append(seq)
+        
+        # Find max length among all sequences
+        max_seq_len = max(len(seq) for seq in all_sequences)
+        
+        # Pad sequences to the same length with EOS
+        padded_sequences = []
+        for seq in all_sequences:
+            if len(seq) < max_seq_len:
+                # Pad with EOS tokens
+                padding = torch.full((max_seq_len - len(seq),), eos_idx, device=device, dtype=seq.dtype)
+                seq = torch.cat([seq, padding])
+            padded_sequences.append(seq.unsqueeze(0))
+        
+        # Stack all sequences
+        sequences = torch.cat(padded_sequences, dim=0)
+        
+        # Ensure there is EOS at the end of every sequence (important for calculating lengths)
+        has_eos = (sequences == eos_idx).any(dim=1)
+        if not has_eos.all():
+            # Append EOS to sequences that don't have it
+            end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)
+            sequences = torch.cat([sequences, end], dim=1)
 
         # calculate lengths
         _, lengths = (sequences == eos_idx).max(dim=1)
@@ -183,4 +247,9 @@ class BeamSearch(SequenceSampler):
 
             new_seqs = sorted(new_seqs, key=lambda seq: seq.score)
             seqs = new_seqs[-self.beam_width:]
+            
+            # Early stopping: if all top beams have generated EOS, stop
+            if all(seq.tokens[-1] == eos_idx for seq in seqs):
+                break
+                
         return torch.tensor(seqs[-1].tokens, device=device)
