@@ -71,20 +71,22 @@ class GreedySampler(SequenceSampler):
             if finished.all():
                 break
 
-        # Only append EOS to sequences that haven't generated it yet
-        needs_eos = ~finished
-        if needs_eos.any():
-            # Append EOS only to unfinished sequences
-            end = torch.where(needs_eos.unsqueeze(1), 
-                            torch.tensor(eos_idx, device=device), 
-                            sequences[:, -1].unsqueeze(1))
+        # Ensure all sequences end with EOS for consistent length calculation
+        # For finished sequences, they already have EOS, so we duplicate it
+        # For unfinished sequences (shouldn't happen but for safety), append EOS
+        if not finished.all():
+            # Some sequences didn't finish - append EOS to them
+            end = torch.where(finished.unsqueeze(1), 
+                            sequences[:, -1].unsqueeze(1),  # Keep last token (already EOS)
+                            torch.tensor(eos_idx, device=device))  # Append EOS
             sequences = torch.cat([sequences, end], dim=1)
         else:
-            # All sequences finished naturally, still append EOS for length calculation
-            end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)
+            # All sequences finished naturally - append their last tokens (all EOS)
+            # This maintains consistent shape across all samples
+            end = sequences[:, -1].unsqueeze(1)
             sequences = torch.cat([sequences, end], dim=1)
 
-        # calculate lengths
+        # calculate lengths (finds first EOS position)
         _, lengths = (sequences == eos_idx).max(dim=1)
 
         return sequences, lengths
@@ -136,20 +138,22 @@ class RandomSampler(SequenceSampler):
             if finished.all():
                 break
 
-        # Only append EOS to sequences that haven't generated it yet
-        needs_eos = ~finished
-        if needs_eos.any():
-            # Append EOS only to unfinished sequences
-            end = torch.where(needs_eos.unsqueeze(1), 
-                            torch.tensor(eos_idx, device=device), 
-                            sequences[:, -1].unsqueeze(1))
+        # Ensure all sequences end with EOS for consistent length calculation
+        # For finished sequences, they already have EOS, so we duplicate it
+        # For unfinished sequences (shouldn't happen but for safety), append EOS
+        if not finished.all():
+            # Some sequences didn't finish - append EOS to them
+            end = torch.where(finished.unsqueeze(1), 
+                            sequences[:, -1].unsqueeze(1),  # Keep last token (already EOS)
+                            torch.tensor(eos_idx, device=device))  # Append EOS
             sequences = torch.cat([sequences, end], dim=1)
         else:
-            # All sequences finished naturally, still append EOS for length calculation
-            end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)
+            # All sequences finished naturally - append their last tokens (all EOS)
+            # This maintains consistent shape across all samples
+            end = sequences[:, -1].unsqueeze(1)
             sequences = torch.cat([sequences, end], dim=1)
 
-        # calculate lengths
+        # calculate lengths (finds first EOS position)
         _, lengths = (sequences == eos_idx).max(dim=1)
 
         return sequences, lengths
@@ -241,9 +245,8 @@ class BeamSearch(SequenceSampler):
                 seq.kwargs = kwargs
 
                 output = F.log_softmax(output.squeeze(0), dim=0).tolist()
-                for seq in seqs:
-                    for tok, out in enumerate(output):
-                        new_seqs.append(seq.new_seq(tok, out, eos_idx))
+                for tok, out in enumerate(output):
+                    new_seqs.append(seq.new_seq(tok, out, eos_idx))
 
             new_seqs = sorted(new_seqs, key=lambda seq: seq.score)
             seqs = new_seqs[-self.beam_width:]
