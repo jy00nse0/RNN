@@ -18,7 +18,7 @@ class SequenceSampler(ABC):
         - **max_length** (scalar): Maximum length of sampled sequence.
 
     Outputs: sequences, lengths
-        - **sequences** (max_seq_len, batch): Sampled sequences.
+        - **sequences** (batch, max_seq_len): Sampled sequences.
         - **lengths** (batch): Length of sequence for every batch.
     """
 
@@ -29,82 +29,82 @@ class SequenceSampler(ABC):
 
 class GreedySampler(SequenceSampler):
     """
-    Greedy sampler always chooses the most probable next token when sampling sequence.
-
-    Inputs: encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length
-        - **encoder_outputs** (seq_len, batch, encoder_hidden_size): Last encoder layer outputs for every timestamp.
-        - **h_n** (num_layers * num_directions, batch, hidden_size): RNN outputs for all layers for t=seq_len (last
-                    timestamp)
-        - **decoder**: Seq2seq decoder.
-        - **sos_idx** (scalar): Index of start of sentence token in vocabulary.
-        - **eos_idx** (scalar): Index of end of sentence token in vocabulary.
-        - **max_length** (scalar): Maximum length of sampled sequence.
-
-    Outputs: sequences, lengths
-        - **sequences** (batch, max_seq_len): Sampled sequences.
-        - **lengths** (batch): Length of sequence for every batch.
+    Greedy sampler: 가장 높은 확률의 토큰을 선택.
+    EOS 생성 시 해당 샘플은 조기 종료하며, 모든 샘플이 종료되면 즉시 중단.
     """
     def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length):
         batch_size = encoder_outputs.size(1)
         device = encoder_outputs.device
-        sequences = None
 
-        input_word = torch.tensor([sos_idx] * batch_size, device=device)
+        # 출력 버퍼 미리 할당
+        sequences = torch.zeros(batch_size, max_length, dtype=torch.long, device=device)
+        lengths = torch.full((batch_size,), max_length, dtype=torch.long, device=device)
+
+        finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
+        eos_scalar = torch.tensor(eos_idx, dtype=torch.long, device=device)
+
+        input_word = torch.full((batch_size,), sos_idx, dtype=torch.long, device=device)
         kwargs = {}
+
         for t in range(max_length):
-            output, attn_weights, kwargs = decoder(t, input_word, encoder_outputs, h_n, **kwargs)
-            _, argmax = output.max(dim=1)  # greedily take the most probable word
-            input_word = argmax
-            argmax = argmax.unsqueeze(1)  # (batch) -> (batch, 1) because of concatenating to sequences
-            sequences = argmax if sequences is None else torch.cat([sequences, argmax], dim=1)
+            output, _, kwargs = decoder(t, input_word, encoder_outputs, h_n, **kwargs)
+            argmax = output.argmax(dim=1)  # (batch,)
 
-        # ensure there is EOS token at the end of every sequence (important for calculating lengths)
-        end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)  # (batch, 1)
-        sequences = torch.cat([sequences, end], dim=1)
+            # 아직 끝나지 않은 샘플만 업데이트
+            if (~finished).any():
+                sequences[~finished, t] = argmax[~finished]
 
-        # calculate lengths
-        _, lengths = (sequences == eos_idx).max(dim=1)
+            # 새로 종료된 샘플 갱신(EOS 포함 길이)
+            newly_finished = (argmax == eos_idx) & (~finished)
+            if newly_finished.any():
+                lengths[newly_finished] = t + 1
+                finished = finished | newly_finished
+
+            # 모두 종료되면 중단
+            if finished.all():
+                break
+
+            # 종료된 샘플은 다음 입력으로 EOS 고정
+            input_word = torch.where(finished, eos_scalar, argmax)
 
         return sequences, lengths
 
 
 class RandomSampler(SequenceSampler):
     """
-    Random sampler uses roulette-wheel when selecting next token in sequence, tokens (softmax) probabilities are used as
-    token weights in roulette-wheel.
-
-    Inputs: encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length
-        - **encoder_outputs** (seq_len, batch, encoder_hidden_size): Last encoder layer outputs for every timestamp.
-        - **h_n** (num_layers * num_directions, batch, hidden_size): RNN outputs for all layers for t=seq_len (last
-                    timestamp)
-        - **decoder**: Seq2seq decoder.
-        - **sos_idx** (scalar): Index of start of sentence token in vocabulary.
-        - **eos_idx** (scalar): Index of end of sentence token in vocabulary.
-        - **max_length** (scalar): Maximum length of sampled sequence.
-
-    Outputs: sequences, lengths
-        - **sequences** (batch, max_seq_len): Sampled sequences.
-        - **lengths** (batch): Length of sequence for every batch.
+    Random sampler: 소프트맥스 확률에 따른 룰렛 휠 샘플링.
+    EOS 생성 시 해당 샘플은 조기 종료하며, 모든 샘플이 종료되면 즉시 중단.
     """
     def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length):
         batch_size = encoder_outputs.size(1)
         device = encoder_outputs.device
-        sequences = None
 
-        input_word = torch.tensor([sos_idx] * batch_size, device=device)
+        sequences = torch.zeros(batch_size, max_length, dtype=torch.long, device=device)
+        lengths = torch.full((batch_size,), max_length, dtype=torch.long, device=device)
+
+        finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
+        eos_scalar = torch.tensor(eos_idx, dtype=torch.long, device=device)
+
+        input_word = torch.full((batch_size,), sos_idx, dtype=torch.long, device=device)
         kwargs = {}
+
         for t in range(max_length):
-            output, attn_weights, kwargs = decoder(t, input_word, encoder_outputs, h_n, **kwargs)
-            indices = torch.multinomial(F.softmax(output, dim=1), 1)  # roulette-wheel selection of tokens with probability as weights (batch, 1)
-            input_word = indices.squeeze(1)  # (batch, 1) -> (batch)
-            sequences = indices if sequences is None else torch.cat([sequences, indices], dim=1)
+            output, _, kwargs = decoder(t, input_word, encoder_outputs, h_n, **kwargs)
+            probs = F.softmax(output, dim=1)
+            sampled = torch.multinomial(probs, 1).squeeze(1)  # (batch,)
 
-        # ensure there is EOS token at the end of every sequence (important for calculating lengths)
-        end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)  # (batch, 1)
-        sequences = torch.cat([sequences, end], dim=1)
+            if (~finished).any():
+                sequences[~finished, t] = sampled[~finished]
 
-        # calculate lengths
-        _, lengths = (sequences == eos_idx).max(dim=1)
+            newly_finished = (sampled == eos_idx) & (~finished)
+            if newly_finished.any():
+                lengths[newly_finished] = t + 1
+                finished = finished | newly_finished
+
+            if finished.all():
+                break
+
+            input_word = torch.where(finished, eos_scalar, sampled)
 
         return sequences, lengths
 
@@ -116,71 +116,92 @@ class Sequence:
         self.kwargs = kwargs
 
     def new_seq(self, tok, log_prob, eos_idx):
-        log_prob = log_prob if self.tokens[-1] != eos_idx else 0
+        # EOS 이후에는 확률 누적 중단
+        log_prob = log_prob if self.tokens[-1] != eos_idx else 0.0
         return Sequence(self.log_prob + log_prob, self.tokens + [tok], self.kwargs)
 
-    @property
-    def score(self):
-        # TODO add alpha
-        return self.log_prob * ((5 + len(self.tokens)) / 6)
+    def normalized_score(self, alpha=1.0):
+        # Google NMT 길이 정규화: log_prob / ((5 + len)/6)^alpha
+        return self.log_prob / (((5 + len(self.tokens)) / 6.0) ** alpha)
 
 
 class BeamSearch(SequenceSampler):
     """
-    Decodes sequence with beam search algorithm.
-
-    TODO this is very bad and very slow implementation of beam search, improve this ASAP
-
-    Inputs: encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length
-        - **encoder_outputs** (seq_len, batch, encoder_hidden_size): Last encoder layer outputs for every timestamp.
-        - **h_n** (num_layers * num_directions, batch, hidden_size): RNN outputs for all layers for t=seq_len (last
-                    timestamp)
-        - **decoder**: Seq2seq decoder.
-        - **sos_idx** (scalar): Index of start of sentence token in vocabulary.
-        - **eos_idx** (scalar): Index of end of sentence token in vocabulary.
-        - **max_length** (scalar): Maximum length of sampled sequence.
-
-    Outputs: sequences, lengths
-        - **sequences** (batch, max_seq_len): Sampled sequences.
-        - **lengths** (batch): Length of sequence for every batch.
+    빔 서치 디코더(조기 종료 지원):
+    - EOS가 나오면 해당 빔 확장 중단
+    - 모든 활성 빔이 EOS를 내면 즉시 종료
+    - 변수 섀도잉 제거, kwargs 안정적 복사
     """
-    def __init__(self, beam_width=10, alpha=1):
+    def __init__(self, beam_width=10, alpha=1.0):
         self.beam_width = beam_width
         self.alpha = alpha
-        self.denominator = 1 / (6**alpha)
 
     def sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length):
         batch_size = encoder_outputs.size(1)
         device = encoder_outputs.device
-        sequences = None
 
-        for batch in range(batch_size):
-            seq = self._sample(encoder_outputs[:, batch, :].unsqueeze(1), h_n[:, batch, :].unsqueeze(1), decoder, sos_idx, eos_idx, max_length, device).unsqueeze(0)
-            sequences = seq if sequences is None else torch.cat([sequences, seq], dim=1)
+        all_sequences = []
+        all_lengths = []
 
-        # ensure there is EOS token at the end of every sequence (important for calculating lengths)
-        end = torch.tensor([eos_idx] * batch_size, device=device).unsqueeze(1)  # (batch, 1)
-        sequences = torch.cat([sequences, end], dim=1)
+        for b in range(batch_size):
+            seq, length = self._sample(
+                encoder_outputs[:, b, :].unsqueeze(1),
+                h_n[:, b, :].unsqueeze(1),
+                decoder, sos_idx, eos_idx, max_length, device
+            )
+            all_sequences.append(seq)
+            all_lengths.append(length)
 
-        # calculate lengths
-        _, lengths = (sequences == eos_idx).max(dim=1)
+        # 동일 길이로 패딩
+        max_len = max(seq.size(0) for seq in all_sequences)
+        sequences = torch.zeros(batch_size, max_len, dtype=torch.long, device=device)
+        for i, seq in enumerate(all_sequences):
+            sequences[i, :seq.size(0)] = seq
 
+        lengths = torch.tensor(all_lengths, dtype=torch.long, device=device)
         return sequences, lengths
 
     def _sample(self, encoder_outputs, h_n, decoder, sos_idx, eos_idx, max_length, device):
-        seqs = [Sequence(0, [sos_idx], {})]
+        active_beams = [Sequence(0.0, [sos_idx], {})]
+        finished_beams = []
+
         for t in range(max_length):
-            new_seqs = []
-            for seq in seqs:
-                input_word = torch.tensor(seq.tokens[-1], device=device).long().view(1)
-                output, _, kwargs = decoder(t, input_word, encoder_outputs, h_n, **seq.kwargs)
-                seq.kwargs = kwargs
+            candidates = []
 
-                output = F.log_softmax(output.squeeze(0), dim=0).tolist()
-                for seq in seqs:
-                    for tok, out in enumerate(output):
-                        new_seqs.append(seq.new_seq(tok, out, eos_idx))
+            for beam in active_beams:
+                if beam.tokens[-1] == eos_idx:
+                    finished_beams.append(beam)
+                    continue
 
-            new_seqs = sorted(new_seqs, key=lambda seq: seq.score)
-            seqs = new_seqs[-self.beam_width:]
-        return torch.tensor(seqs[-1].tokens, device=device)
+                input_word = torch.tensor(beam.tokens[-1], device=device, dtype=torch.long).view(1)
+                output, _, kwargs = decoder(t, input_word, encoder_outputs, h_n, **beam.kwargs)
+                log_probs = F.log_softmax(output.squeeze(0), dim=0)
+
+                # 가능한 모든 토큰으로 확장
+                for tok in range(log_probs.size(0)):
+                    new_beam = beam.new_seq(tok, float(log_probs[tok].item()), eos_idx)
+                    new_beam.kwargs = dict(kwargs) if isinstance(kwargs, dict) else kwargs
+                    candidates.append(new_beam)
+
+            if not candidates:
+                break
+
+            # 길이 정규화 점수(alpha 반영)로 상위 beam_width 선택
+            candidates.sort(key=lambda b: b.normalized_score(self.alpha), reverse=True)
+            active_beams = candidates[:self.beam_width]
+
+            # 모든 빔이 EOS면 중단
+            if all(b.tokens[-1] == eos_idx for b in active_beams):
+                finished_beams.extend(active_beams)
+                break
+
+        all_beams = finished_beams + active_beams
+        best_beam = max(all_beams, key=lambda b: b.normalized_score(self.alpha))
+
+        # 길이: EOS 포함 첫 위치(+1), 없으면 전체 길이
+        try:
+            length = best_beam.tokens.index(eos_idx) + 1
+        except ValueError:
+            length = len(best_beam.tokens)
+
+        return torch.tensor(best_beam.tokens, device=device, dtype=torch.long), length
