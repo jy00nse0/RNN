@@ -154,7 +154,7 @@ def parse_args():
     if not args.embedding_type and not args.embedding_size:
         args.embedding_size = 1000  # Paper default
 
-    args.save_path += os.path.sep + datetime.now().strftime("%Y-%m-%d-%H:%M")
+    args.save_path = os.path.join(args.save_path, datetime.now().strftime("%Y-%m-%d-%H-%M"))
 
     print(args)
     return args
@@ -552,8 +552,8 @@ def main():
     print('Done.')
 
     print('Saving vocab and args...', end='', flush=True)
-    save_vocab(tgt_vocab, args.save_path + os.path.sep + 'vocab')
-    save_object(args, args.save_path + os.path.sep + 'args')
+    save_vocab(tgt_vocab, os.path.join(args.save_path, 'vocab'))
+    save_object(args, os.path.join(args.save_path, 'args'))
     print('Done')
 
     # ===== Model Initialization =====

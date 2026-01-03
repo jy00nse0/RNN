@@ -6,7 +6,7 @@ from constants import MODEL_FORMAT
 
 def ensure_dir_exists(path):
     if not os.path.isdir(path):
-        os.makedirs(path)
+        os.makedirs(path, exist_ok=True)
 
 
 def save_object(obj, path):
@@ -33,4 +33,5 @@ def save_vocab(vocab, path):
 
 def save_model(dir_path, model, epoch, train_loss, val_loss):
     ensure_dir_exists(dir_path)
-    torch.save(model.state_dict(), dir_path + os.path.sep + (MODEL_FORMAT % (epoch, train_loss, val_loss)))
+    model_file = MODEL_FORMAT % (epoch, train_loss, val_loss)
+    torch.save(model.state_dict(), os.path.join(dir_path, model_file))
