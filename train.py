@@ -34,6 +34,8 @@ New Optimizations:
 3. DataLoader workers configuration
 4. zero_grad(set_to_none=True) for better performance
 5. TF32 and cuDNN benchmarking enabled
+
+[New] generate_sample_translations now uses greedy decoding with early stopping (<eos>).
 """
 
 def parse_args():
@@ -238,11 +240,70 @@ def log_batch_statistics(batch_idx, total_batches, loss, grad_norm, lr):
               f"Grad Norm: {grad_norm:.4f} | LR: {lr:.6f}")
 
 
+def _get_special_token_indices(tgt_metadata, tgt_vocab):
+    """
+    Try to resolve <sos> and <eos> indices from metadata; fall back to vocab.stoi if needed.
+    """
+    sos_idx = getattr(tgt_metadata, 'sos_idx', None)
+    eos_idx = getattr(tgt_metadata, 'eos_idx', None)
+
+    # Fallbacks if metadata does not expose indices
+    if sos_idx is None:
+        sos_idx = tgt_vocab.stoi.get('<sos>', tgt_vocab.stoi.get('<go>', 1))
+    if eos_idx is None:
+        eos_idx = tgt_vocab.stoi.get('<eos>', tgt_vocab.stoi.get('<end>', 2))
+    return sos_idx, eos_idx
+
+
+def _greedy_decode_sequence(model, src_seq_1, sos_idx, eos_idx, max_len):
+    """
+    Greedy decode a single example (batch size = 1) with early stopping on <eos>.
+    Args:
+        model: seq2seq model with forward(question, answer)
+        src_seq_1: Tensor of shape (src_len, 1) for a single example
+        sos_idx, eos_idx: indices for special tokens
+        max_len: maximum generated tokens (excluding <sos>)
+    Returns:
+        List[int]: generated target token ids (without <sos>, and excluding <eos>)
+    """
+    device = src_seq_1.device
+
+    # Start with <sos>
+    tgt_seq = torch.tensor([[sos_idx]], dtype=torch.long, device=device)  # (1, 1)
+
+    # Iteratively decode next tokens
+    for _ in range(max_len):
+        # Forward pass with the current partial target (teacher forcing disabled)
+        logits = model(src_seq_1, tgt_seq)            # (tgt_len-1, 1, vocab)
+        step_logit = logits[-1, 0]                    # last step for next token
+        next_token = int(step_logit.argmax(dim=-1).item())
+
+        # Early stop on <eos> (do not append <eos>)
+        if next_token == eos_idx:
+            break
+
+        # Append the predicted token and continue
+        next_tok_tensor = torch.tensor([[next_token]], dtype=torch.long, device=device)
+        tgt_seq = torch.cat([tgt_seq, next_tok_tensor], dim=0)
+
+    # Return generated tokens (excluding <sos>)
+    return tgt_seq.squeeze(1).tolist()[1:]
+
+
 def generate_sample_translations(model, val_iter, tgt_metadata, src_vocab, tgt_vocab, num_samples=3, max_len=50):
-    """Generate sample translations to visualize model progress"""
+    """
+    Generate sample translations to visualize model progress using greedy decoding with early stopping.
+    - Uses model's forward iteratively to produce tokens until <eos> or max_len.
+    - No teacher-forced logits.argmax over a fixed-length target; prevents trailing tokens after <eos>.
+    """
     model.eval()
     samples = []
-    
+    device = next(model.parameters()).device
+
+    sos_idx, eos_idx = _get_special_token_indices(tgt_metadata, tgt_vocab)
+    src_pad_idx = 0  # Source padding index (from Vocab construction)
+    tgt_pad_idx = tgt_metadata.padding_idx
+
     with torch.no_grad():
         # Create a fresh iterator to avoid state conflicts
         for i, batch in enumerate(iter(val_iter)):
@@ -254,26 +315,28 @@ def generate_sample_translations(model, val_iter, tgt_metadata, src_vocab, tgt_v
             # Check if batch has data
             if question.size(1) == 0 or answer.size(0) == 0:
                 continue
-                
-            logits = model(question, answer)
-            predictions = logits.argmax(dim=-1)
-            
-            # Take first item in batch
+
+            # Decode only the first item in the batch
+            src_seq_1 = question[:, 0:1].to(device)  # keep batch dimension = 1
+            pred_token_ids = _greedy_decode_sequence(
+                model=model,
+                src_seq_1=src_seq_1,
+                sos_idx=sos_idx,
+                eos_idx=eos_idx,
+                max_len=max_len
+            )
+
+            # Prepare tokens for display
             src_tokens = question[:, 0].cpu().tolist()
-            tgt_tokens = answer[1:, 0].cpu().tolist()
-            pred_tokens = predictions[:, 0].cpu().tolist()
-            
-            # Convert to words (filter padding and invalid indices) - use correct vocab for each
-            # Filter: valid index range and not padding token
-            src_pad_idx = 0  # Source padding index (from Vocab construction)
-            tgt_pad_idx = tgt_metadata.padding_idx
-            
-            src_words = [src_vocab.itos[idx] for idx in src_tokens 
-                        if 0 <= idx < len(src_vocab.itos) and idx != src_pad_idx]
-            tgt_words = [tgt_vocab.itos[idx] for idx in tgt_tokens 
-                        if 0 <= idx < len(tgt_vocab.itos) and idx != tgt_pad_idx]
-            pred_words = [tgt_vocab.itos[idx] for idx in pred_tokens 
+            tgt_tokens = answer[1:, 0].cpu().tolist()  # ground truth without <sos>
+
+            # Convert to words (filter padding and invalid indices)
+            src_words = [src_vocab.itos[idx] for idx in src_tokens
+                         if 0 <= idx < len(src_vocab.itos) and idx != src_pad_idx]
+            tgt_words = [tgt_vocab.itos[idx] for idx in tgt_tokens
                          if 0 <= idx < len(tgt_vocab.itos) and idx != tgt_pad_idx]
+            pred_words = [tgt_vocab.itos[idx] for idx in pred_token_ids
+                          if 0 <= idx < len(tgt_vocab.itos) and idx != tgt_pad_idx]
             
             samples.append({
                 'source': ' '.join(src_words),
