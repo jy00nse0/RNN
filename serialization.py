@@ -6,7 +6,7 @@ from constants import MODEL_FORMAT
 
 def ensure_dir_exists(path):
     if not os.path.isdir(path):
-        os.makedirs(path)
+        os.makedirs(path, exist_ok=True)
 
 
 def save_object(obj, path):
