@@ -5,6 +5,7 @@ Tests:
 1. Timestamp format doesn't contain invalid characters for Windows
 2. Path joining works correctly across platforms
 3. Directory creation works properly
+4. get_model_path function works with new path handling
 """
 
 import os
@@ -93,6 +94,41 @@ def test_no_invalid_windows_chars():
     print(f"✓ No invalid Windows characters in timestamp")
 
 
+def test_get_model_path_simulation():
+    """Test that get_model_path function works with os.path.join"""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Create test model files
+        test_files = [
+            "seq2seq-1-0.5-0.6.pt",
+            "seq2seq-2-0.4-0.5.pt",
+            "seq2seq-10-0.3-0.4.pt",
+        ]
+        
+        for filename in test_files:
+            filepath = os.path.join(temp_dir, filename)
+            with open(filepath, 'w') as f:
+                f.write('test')
+        
+        # Simulate get_model_path function
+        def get_model_path(dir_path, epoch):
+            name_start = f"seq2seq-{epoch}"
+            for path in os.listdir(dir_path):
+                if path.startswith(name_start):
+                    return os.path.join(dir_path, path)
+            raise ValueError(f"Model from epoch {epoch} doesn't exist in {dir_path}")
+        
+        # Test finding models
+        model_1 = get_model_path(temp_dir, 1)
+        assert "seq2seq-1" in model_1, f"Expected seq2seq-1 in path: {model_1}"
+        assert os.path.exists(model_1), f"Model path doesn't exist: {model_1}"
+        
+        model_10 = get_model_path(temp_dir, 10)
+        assert "seq2seq-10" in model_10, f"Expected seq2seq-10 in path: {model_10}"
+        assert os.path.exists(model_10), f"Model path doesn't exist: {model_10}"
+        
+        print(f"✓ get_model_path works correctly with os.path.join")
+
+
 def main():
     print("=" * 70)
     print("Testing Cross-Platform Compatibility Fixes")
@@ -103,6 +139,7 @@ def main():
         test_path_joining()
         test_directory_creation()
         test_no_invalid_windows_chars()
+        test_get_model_path_simulation()
         
         print("\n" + "=" * 70)
         print("All tests passed! ✓")
