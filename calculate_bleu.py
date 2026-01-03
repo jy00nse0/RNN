@@ -28,7 +28,7 @@ def get_model_path(dir_path, epoch):
     name_start = MODEL_START_FORMAT % epoch
     for path in os.listdir(dir_path):
         if path.startswith(name_start):
-            return dir_path + path
+            return os.path.join(dir_path, path)
     raise ValueError("Model from epoch %d doesn't exist in %s" % (epoch, dir_path))
 
 
@@ -86,8 +86,8 @@ class SimpleField:
 def main():
     torch.set_grad_enabled(False)
     args = parse_args()
-    model_args = load_object(args.model_path + os.path.sep + 'args')
-    vocab = load_object(args.model_path + os.path.sep + 'vocab')
+    model_args = load_object(os.path.join(args.model_path, 'args'))
+    vocab = load_object(os.path.join(args.model_path, 'vocab'))
 
     cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda' if cuda else 'cpu')
@@ -105,7 +105,7 @@ def main():
     tgt_metadata = metadata_factory(model_args, vocab)
     src_metadata = metadata_factory(model_args, vocab)
 
-    model = predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path + os.path.sep, args.epoch), field)
+    model = predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path, args.epoch), field)
     model = model.to(device)
     model.eval()
 
