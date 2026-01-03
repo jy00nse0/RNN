@@ -130,8 +130,7 @@ def run_sample_training():
 def get_latest_model_dir(base_path):
     """
     Find the most recent timestamped subdirectory under base_path.
-    train.py creates directories with format YYYY-MM-DD-HH:MM
-    Note: This format contains colons which may not work on Windows filesystems.
+    train.py creates directories with format YYYY-MM-DD-HH-MM
     """
     if not os.path.exists(base_path):
         raise FileNotFoundError(f"Base path not found: {base_path}")
