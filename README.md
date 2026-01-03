@@ -88,11 +88,12 @@ To calculate BLEU score on a trained model:
 
 ```bash
 python calculate_bleu.py \
-  --model-path checkpoints/my_model/2025-12-06-12:00 \
+  --model-path checkpoints/my_model/2025-12-06-12-00 \
   --reference-path data/wmt14_vocab50k/base/test.de \
   --epoch 10 \
   --sampling-strategy greedy
 ```
+
 
 ## Data Preparation
 
