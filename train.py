@@ -62,7 +62,7 @@ def parse_args():
     parser.add_argument('--train-embeddings', action='store_true', default=True, 
                        help='Should gradients be propagated to word embeddings.')
     parser.add_argument('--embedding-type', type=str, default=None)
-    parser.add_argument('--save-path', default='.save',
+    parser.add_argument('--save-path', default='checkpoints',
                        help='Folder where models (and other configs) will be saved during training.')
     parser.add_argument('--save-every-epoch', action='store_true',
                        help='Save model every epoch regardless of validation loss.')
@@ -154,7 +154,7 @@ def parse_args():
     if not args.embedding_type and not args.embedding_size:
         args.embedding_size = 1000  # Paper default
 
-    args.save_path += os.path.sep + datetime.now().strftime("%Y-%m-%d-%H:%M")
+    args.save_path = os.path.join(args.save_path, datetime.now().strftime("%Y-%m-%d-%H-%M"))
 
     print(args)
     return args
@@ -552,8 +552,8 @@ def main():
     print('Done.')
 
     print('Saving vocab and args...', end='', flush=True)
-    save_vocab(tgt_vocab, args.save_path + os.path.sep + 'vocab')
-    save_object(args, args.save_path + os.path.sep + 'args')
+    save_vocab(tgt_vocab, os.path.join(args.save_path, 'vocab'))
+    save_object(args, os.path.join(args.save_path, 'args'))
     print('Done')
 
     # ===== Model Initialization =====

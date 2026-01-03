@@ -59,7 +59,7 @@ def get_model_path(dir_path, epoch):
     name_start = MODEL_START_FORMAT % epoch
     for path in os.listdir(dir_path):
         if path.startswith(name_start):
-            return dir_path + path
+            return os.path.join(dir_path, path)
     raise ValueError("Model from epoch %d doesn't exist in %s" % (epoch, dir_path))
 
 
@@ -67,9 +67,9 @@ def main():
     torch.set_grad_enabled(False)
     args = parse_args()
     print('Args loaded')
-    model_args = load_object(args.model_path + os.path.sep + 'args')
+    model_args = load_object(os.path.join(args.model_path, 'args'))
     print('Model args loaded.')
-    vocab = load_object(args.model_path + os.path.sep + 'vocab')
+    vocab = load_object(os.path.join(args.model_path, 'vocab'))
     print('Vocab loaded.')
 
     cuda = torch.cuda.is_available() and args.cuda
@@ -90,7 +90,7 @@ def main():
     src_metadata = metadata_factory(model_args, vocab)
 
     model = ModelDecorator(
-        predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path + os.path.sep, args.epoch), field))
+        predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path, args.epoch), field))
     model = model.to(device)
     print('model loaded')
     model.eval()
