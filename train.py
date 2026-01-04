@@ -12,7 +12,7 @@ from dataset import dataset_factory
 from model import train_model_factory
 from serialization import save_object, save_model, save_vocab
 from datetime import datetime
-from util import embedding_size_from_name
+from util import embedding_size_from_name, load_training_metrics, plot_loss_graph
 from tqdm import tqdm
 import numpy as np
 from collections import defaultdict
@@ -91,6 +91,19 @@ def parse_args():
                           help='Number of DataLoader workers (0=single process, 4-8 recommended).')
     perf_args.add_argument('--amp', action='store_true', default= False,
                           help='Use Automatic Mixed Precision (1.5-2x faster but may affect reproducibility).')
+    
+    # ===== Debugging and Visualization Options =====
+    debug_args = parser.add_argument_group('Debug', 'Debugging and visualization settings.')
+    debug_args.add_argument('--debug', action='store_true', default=False,
+                           help='Enable per-batch logging and verbose evaluation.')
+    debug_args.add_argument('--log-interval', type=int, default=100,
+                           help='Batch interval for logging when --debug is set.')
+    debug_args.add_argument('--sample-translations', action='store_true', default=False,
+                           help='Print sample translations after each epoch.')
+    debug_args.add_argument('--print-model-summary', action='store_true', default=False,
+                           help='Print model architecture and parameter counts.')
+    debug_args.add_argument('--plot-loss-graph', action='store_true', default=False,
+                           help='Plot training/validation loss graph at end of training.')
 
     # ===== Embedding Hyperparameters =====
     parser.add_argument('--embedding-size', type=int, default=1000, 
@@ -231,9 +244,9 @@ def calculate_perplexity(loss):
     return np.exp(min(loss, MAX_LOSS_FOR_PERPLEXITY))  # Cap to prevent overflow
 
 
-def log_batch_statistics(batch_idx, total_batches, loss, grad_norm, lr):
+def log_batch_statistics(batch_idx, total_batches, loss, grad_norm, lr, debug=False, log_interval=100):
     """Log detailed batch-level statistics"""
-    if batch_idx % 100 == 0:
+    if debug and batch_idx % log_interval == 0:
         perplexity = calculate_perplexity(loss)
         print(f"  [Batch {batch_idx}/{total_batches}] "
               f"Loss: {loss:.4f} | PPL: {perplexity:.2f} | "
@@ -400,7 +413,8 @@ def evaluate(model, val_iter, metadata, reverse_src=False, verbose=False):
 
 
 def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False, 
-          use_amp=False, scaler=None, epoch=0, save_path=None, vocab=None):
+          use_amp=False, scaler=None, epoch=0, save_path=None, vocab=None, 
+          debug=False, log_interval=100):
     """
     [OPTIMIZED] Train model for one epoch.
     
@@ -422,6 +436,8 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
         epoch: Current epoch number
         save_path: Path to save training metrics
         vocab: Vocabulary for logging
+        debug: Enable per-batch logging
+        log_interval: Batch interval for logging
     
     Returns:
         avg_loss: Average training loss for the epoch
@@ -495,7 +511,7 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
         grad_norms.append(grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm)
         
         # Log batch statistics every 100 batches
-        log_batch_statistics(batch_idx, total_batches, batch_loss, grad_norms[-1], current_lr)
+        log_batch_statistics(batch_idx, total_batches, batch_loss, grad_norms[-1], current_lr, debug, log_interval)
     
     avg_loss = total_loss / len(train_iter)
     avg_grad_norm = np.mean(grad_norms) if grad_norms else 0.0
@@ -564,19 +580,20 @@ def main():
         model = nn.DataParallel(model, dim=1)
     
     # [OPTIMIZED] Print model info
-    print("\n" + "=" * 70)
-    print("Model Architecture:")
-    print("=" * 70)
-    print(model)
-    print("=" * 70)
-    
-    # Count parameters
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Total parameters: {total_params:,}")
-    print(f"Trainable parameters: {trainable_params:,}")
-    print(f"Model dtype: {next(model.parameters()).dtype}")
-    print("=" * 70)
+    if args.print_model_summary:
+        print("\n" + "=" * 70)
+        print("Model Architecture:")
+        print("=" * 70)
+        print(model)
+        print("=" * 70)
+        
+        # Count parameters
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"Total parameters: {total_params:,}")
+        print(f"Trainable parameters: {trainable_params:,}")
+        print(f"Model dtype: {next(model.parameters()).dtype}")
+        print("=" * 70)
 
     # ===== Optimizer Setup =====
     # [Paper] Optimizer: SGD with lr=1.0
@@ -615,7 +632,9 @@ def main():
                 scaler=scaler,
                 epoch=epoch,
                 save_path=args.save_path,
-                vocab=tgt_vocab
+                vocab=tgt_vocab,
+                debug=args.debug,
+                log_interval=args.log_interval
             )
             
             # Evaluate on validation set
@@ -624,17 +643,18 @@ def main():
                 val_iter=val_iter,
                 metadata=tgt_metadata,  # Use TGT metadata for loss/output dimension
                 reverse_src=args.reverse,
-                verbose=True
+                verbose=args.debug
             )
             
             # Generate and display sample translations
-            print("\n  🔍 Sample Translations:")
-            samples = generate_sample_translations(model, val_iter, tgt_metadata, src_vocab, tgt_vocab, num_samples=2)
-            for i, sample in enumerate(samples, 1):
-                print(f"\n  Example {i}:")
-                print(f"    SRC: {sample['source']}")
-                print(f"    TGT: {sample['target']}")
-                print(f"    PRD: {sample['prediction']}")
+            if args.sample_translations:
+                print("\n  🔍 Sample Translations:")
+                samples = generate_sample_translations(model, val_iter, tgt_metadata, src_vocab, tgt_vocab, num_samples=2)
+                for i, sample in enumerate(samples, 1):
+                    print(f"\n  Example {i}:")
+                    print(f"    SRC: {sample['source']}")
+                    print(f"    TGT: {sample['target']}")
+                    print(f"    PRD: {sample['prediction']}")
             
             # Calculate metrics
             elapsed = datetime.now() - start
@@ -686,11 +706,34 @@ def main():
         model=model,
         val_iter=test_iter,
         metadata=tgt_metadata,  # Use TGT metadata
-        reverse_src=args.reverse
+        reverse_src=args.reverse,
+        verbose=args.debug
     )
     
     print(f"Test loss: {test_loss:.4f}")
     print("=" * 70)
+    
+    # ===== Plot Loss Graph =====
+    if args.plot_loss_graph:
+        metrics_file = os.path.join(args.save_path, 'training_metrics.jsonl')
+        if os.path.exists(metrics_file):
+            try:
+                print("\n" + "=" * 70)
+                print("Generating Loss Graph")
+                print("=" * 70)
+                train_losses, val_losses = load_training_metrics(metrics_file)
+                if train_losses and val_losses:
+                    loss_graph_path = os.path.join(args.save_path, 'loss_graph.png')
+                    plot_loss_graph(train_losses, val_losses, loss_graph_path)
+                    print(f"Loss graph saved to: {loss_graph_path}")
+                else:
+                    print("Warning: No loss data found in metrics file")
+                print("=" * 70)
+            except Exception as e:
+                print(f"Error generating loss graph: {e}")
+                print("=" * 70)
+        else:
+            print(f"\nWarning: Metrics file not found: {metrics_file}")
 
 
 if __name__ == '__main__':
