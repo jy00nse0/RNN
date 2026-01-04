@@ -599,7 +599,7 @@ def main():
     print('Done.')
 
     print('Saving vocab and args...', end='', flush=True)
-    save_vocab(tgt_vocab, os.path.join(args.save_path, 'vocab'))
+    save_vocab(tgt_vocab, os.path.join(args.save_path, 'vocab'))  # Legacy path for backward compatibility
     save_vocab(src_vocab, os.path.join(args.save_path, 'src_vocab'))
     save_vocab(tgt_vocab, os.path.join(args.save_path, 'tgt_vocab'))
     save_object(args, os.path.join(args.save_path, 'args'))
