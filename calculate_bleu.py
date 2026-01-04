@@ -87,25 +87,61 @@ def main():
     torch.set_grad_enabled(False)
     args = parse_args()
     model_args = load_object(os.path.join(args.model_path, 'args'))
-    vocab = load_object(os.path.join(args.model_path, 'vocab'))
+    
+    # Load vocabularies: try to load src_vocab and tgt_vocab separately
+    src_vocab_path = os.path.join(args.model_path, 'src_vocab')
+    tgt_vocab_path = os.path.join(args.model_path, 'tgt_vocab')
+    vocab_path = os.path.join(args.model_path, 'vocab')
+    
+    # Try to load src_vocab and tgt_vocab
+    if os.path.exists(src_vocab_path) and os.path.exists(tgt_vocab_path):
+        # New format: separate vocabularies
+        src_vocab = load_object(src_vocab_path)
+        tgt_vocab = load_object(tgt_vocab_path)
+        print(f"Loaded separate vocabularies: src_vocab ({len(src_vocab)}), tgt_vocab ({len(tgt_vocab)})")
+    elif os.path.exists(vocab_path):
+        # Old format: single vocabulary (backward compatibility)
+        # Load the checkpoint to check embedding sizes
+        checkpoint_path = get_model_path(args.model_path, args.epoch)
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        
+        # Get embedding sizes from checkpoint
+        encoder_embed_size = checkpoint['encoder.embed.weight'].shape[0]
+        decoder_embed_size = checkpoint['decoder.embed.weight'].shape[0]
+        
+        # Load the single vocab (which is tgt_vocab)
+        tgt_vocab = load_object(vocab_path)
+        
+        # Check if we can use tgt_vocab for both src and tgt
+        if encoder_embed_size == decoder_embed_size == len(tgt_vocab):
+            # Same vocab size for both - can reuse
+            src_vocab = tgt_vocab
+            print(f"Using single vocabulary for both src and tgt (size: {len(tgt_vocab)})")
+        else:
+            # Different sizes - we need src_vocab but it's missing
+            print(f"ERROR: Vocabulary size mismatch detected!")
+            print(f"  Checkpoint encoder embedding size: {encoder_embed_size}")
+            print(f"  Checkpoint decoder embedding size: {decoder_embed_size}")
+            print(f"  Available vocab ('vocab' file) size: {len(tgt_vocab)}")
+            print(f"\nThis checkpoint was trained with separate source and target vocabularies,")
+            print(f"but 'src_vocab' file is missing. Please retrain the model with the updated")
+            print(f"train.py that saves both src_vocab and tgt_vocab.")
+            raise RuntimeError("Cannot load model: src_vocab file missing and vocab sizes don't match")
+    else:
+        raise FileNotFoundError(f"No vocabulary files found in {args.model_path}")
 
     cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda' if cuda else 'cpu')
     
+    # Create separate field wrappers for src and tgt
+    src_field = SimpleField(src_vocab)
+    tgt_field = SimpleField(tgt_vocab)
+    
+    # Create separate metadata for src and tgt
+    src_metadata = metadata_factory(model_args, src_vocab)
+    tgt_metadata = metadata_factory(model_args, tgt_vocab)
 
-
-    # Create a simple field wrapper for vocab
-    field = SimpleField(vocab)
-    # For inference, we need both src and tgt metadata.
-    # LIMITATION: During training, only TGT vocab is saved. For same-direction translation
-    # (e.g., model trained on en-de and used on en-de), using TGT vocab for both
-    # is acceptable IF the source and target vocabularies have the same size.
-    # FUTURE WORK: Save both src_vocab and tgt_vocab during training to support
-    # different vocab sizes and cross-direction inference.
-    tgt_metadata = metadata_factory(model_args, vocab)
-    src_metadata = metadata_factory(model_args, vocab)
-
-    model = predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path, args.epoch), field)
+    model = predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path, args.epoch), tgt_field)
     model = model.to(device)
     model.eval()
 
