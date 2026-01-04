@@ -69,7 +69,7 @@ def parse_args():
     parser.add_argument('--dataset', 
                        choices=['twitter-applesupport', 'twitter-amazonhelp', 'twitter-delta',
                                'twitter-spotifycares', 'twitter-uber_support', 'twitter-all',
-                               'twitter-small', 'wmt14-en-de', 'wmt15-deen', 'sample100k'],
+                               'twitter-small', 'wmt14-en-de', 'wmt15-deen', 'sample100k', 'manual_test'],
                        help='Dataset for training model.')
     parser.add_argument('--teacher-forcing-ratio', type=float, default=1.0,
                        help='Teacher forcing ratio used in seq2seq models. [0-1]')
@@ -599,7 +599,10 @@ def main():
     print('Done.')
 
     print('Saving vocab and args...', end='', flush=True)
-    # Save target vocab twice (legacy 'vocab' and explicit 'tgt_vocab') for backward compatibility; both writes use the same object.
+    # Save both source and target vocabularies for evaluation
+    save_vocab(src_vocab, os.path.join(args.save_path, 'src_vocab'))
+    save_vocab(tgt_vocab, os.path.join(args.save_path, 'tgt_vocab'))
+    # Keep backward compatibility: 'vocab' is tgt_vocab
     save_vocab(tgt_vocab, os.path.join(args.save_path, 'vocab'))
     save_vocab(src_vocab, os.path.join(args.save_path, 'src_vocab'))  # Save source vocabulary
     save_vocab(tgt_vocab, os.path.join(args.save_path, 'tgt_vocab'))  # Save target vocabulary

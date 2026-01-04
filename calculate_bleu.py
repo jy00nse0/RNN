@@ -156,60 +156,60 @@ def main():
     args = parse_args()
     model_args = load_object(os.path.join(args.model_path, 'args'))
     
-    # Load vocabularies with backward compatibility
+    # Load vocabularies: try to load src_vocab and tgt_vocab separately
     src_vocab_path = os.path.join(args.model_path, 'src_vocab')
     tgt_vocab_path = os.path.join(args.model_path, 'tgt_vocab')
-    legacy_vocab_path = os.path.join(args.model_path, 'vocab')
+    vocab_path = os.path.join(args.model_path, 'vocab')
     
-    src_vocab = None
-    tgt_vocab = None
-    
-    if os.path.exists(src_vocab_path):
+    # Try to load src_vocab and tgt_vocab
+    if os.path.exists(src_vocab_path) and os.path.exists(tgt_vocab_path):
+        # New format: separate vocabularies
         src_vocab = load_object(src_vocab_path)
-    
-    if os.path.exists(tgt_vocab_path):
         tgt_vocab = load_object(tgt_vocab_path)
-    
-    # Fallback to legacy vocab if either is missing
-    if src_vocab is None or tgt_vocab is None:
-        missing_paths = []
-        if src_vocab is None:
-            missing_paths.append(src_vocab_path)
-        if tgt_vocab is None:
-            missing_paths.append(tgt_vocab_path)
-        print(f"Warning: Separate src_vocab/tgt_vocab missing at: {', '.join(missing_paths)}. Filling missing vocab(s) from legacy single vocab.")
-        print(f"Checked paths: {', '.join(missing_paths)}")
+        print(f"Loaded separate vocabularies: src_vocab ({len(src_vocab)}), tgt_vocab ({len(tgt_vocab)})")
+    elif os.path.exists(vocab_path):
+        # Old format: single vocabulary (backward compatibility)
+        # Load the checkpoint to check embedding sizes
+        checkpoint_path = get_model_path(args.model_path, args.epoch)
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
         
-        if os.path.exists(legacy_vocab_path):
-            legacy_vocab = load_object(legacy_vocab_path)
-            if src_vocab is None:
-                src_vocab = legacy_vocab
-            if tgt_vocab is None:
-                tgt_vocab = legacy_vocab
+        # Get embedding sizes from checkpoint
+        encoder_embed_size = checkpoint['encoder.embed.weight'].shape[0]
+        decoder_embed_size = checkpoint['decoder.embed.weight'].shape[0]
+        
+        # Load the single vocab (which is tgt_vocab)
+        tgt_vocab = load_object(vocab_path)
+        
+        # Check if we can use tgt_vocab for both src and tgt
+        if encoder_embed_size == decoder_embed_size == len(tgt_vocab):
+            # Same vocab size for both - can reuse
+            src_vocab = tgt_vocab
+            print(f"Using single vocabulary for both src and tgt (size: {len(tgt_vocab)})")
         else:
-            raise FileNotFoundError(
-                f"No vocabulary files found.\n"
-                f"Checked paths:\n"
-                f"  - {src_vocab_path}\n"
-                f"  - {tgt_vocab_path}\n"
-                f"  - {legacy_vocab_path}"
-            )
+            # Different sizes - we need src_vocab but it's missing
+            print(f"ERROR: Vocabulary size mismatch detected!")
+            print(f"  Checkpoint encoder embedding size: {encoder_embed_size}")
+            print(f"  Checkpoint decoder embedding size: {decoder_embed_size}")
+            print(f"  Available vocab ('vocab' file) size: {len(tgt_vocab)}")
+            print(f"\nThis checkpoint was trained with separate source and target vocabularies,")
+            print(f"but 'src_vocab' file is missing. Please retrain the model with the updated")
+            print(f"train.py that saves both src_vocab and tgt_vocab.")
+            raise RuntimeError("Cannot load model: src_vocab file missing and vocab sizes don't match")
+    else:
+        raise FileNotFoundError(f"No vocabulary files found in {args.model_path}")
 
     cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda' if cuda else 'cpu')
     
-
-    # Create separate fields for source and target
-    # Source: only add <eos> (no <sos>), matching training behavior
-    # Target: used only for decoding, SOS/EOS indices handled by Seq2SeqPredict
-    src_field = SimpleField(src_vocab, add_sos=False, add_eos=True)
-    tgt_field = SimpleField(tgt_vocab, add_sos=False, add_eos=False)
+    # Create separate field wrappers for src and tgt
+    src_field = SimpleField(src_vocab)
+    tgt_field = SimpleField(tgt_vocab)
     
-    # Use corresponding vocabularies for metadata creation, with backward compatibility fallback.
-    tgt_metadata = metadata_factory(model_args, tgt_vocab)
+    # Create separate metadata for src and tgt
     src_metadata = metadata_factory(model_args, src_vocab)
+    tgt_metadata = metadata_factory(model_args, tgt_vocab)
 
-    model = predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path, args.epoch), src_field, tgt_field)
+    model = predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path, args.epoch), tgt_field)
     model = model.to(device)
     model.eval()
 
