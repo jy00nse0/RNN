@@ -245,7 +245,18 @@ def calculate_perplexity(loss):
 
 
 def log_batch_statistics(batch_idx, total_batches, loss, grad_norm, lr, debug=False, log_interval=100):
-    """Log detailed batch-level statistics"""
+    """
+    Log detailed batch-level statistics.
+    
+    Args:
+        batch_idx: Current batch index
+        total_batches: Total number of batches
+        loss: Current batch loss
+        grad_norm: Gradient norm
+        lr: Learning rate
+        debug: Enable logging (default: False)
+        log_interval: Batch interval for logging when debug is True (default: 100)
+    """
     if debug and batch_idx % log_interval == 0:
         perplexity = calculate_perplexity(loss)
         print(f"  [Batch {batch_idx}/{total_batches}] "
