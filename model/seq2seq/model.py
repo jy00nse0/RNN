@@ -49,7 +49,6 @@ class Seq2SeqTrain(nn.Module):
             return outputs
         
         kwargs = {}
-        input_word = answer[0]  
         input_word = decoder_input[0]
         #for t in range(answer_seq_len - 1):
         for t in range(decoder_input.size(0)):
