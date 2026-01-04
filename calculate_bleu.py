@@ -93,11 +93,7 @@ def main():
         src_vocab = load_object(src_vocab_path)
         tgt_vocab = load_object(tgt_vocab_path)
     else:
-        missing_paths = []
-        if not os.path.exists(src_vocab_path):
-            missing_paths.append(src_vocab_path)
-        if not os.path.exists(tgt_vocab_path):
-            missing_paths.append(tgt_vocab_path)
+        missing_paths = [path for path in (src_vocab_path, tgt_vocab_path) if not os.path.exists(path)]
         print(f"Warning: Separate src_vocab/tgt_vocab not found at: {', '.join(missing_paths)}. Falling back to single vocab.")
         vocab = load_object(os.path.join(args.model_path, 'vocab'))
         src_vocab = vocab
