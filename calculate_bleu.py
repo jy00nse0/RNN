@@ -93,7 +93,7 @@ def main():
         src_vocab = load_object(src_vocab_path)
         tgt_vocab = load_object(tgt_vocab_path)
     except FileNotFoundError:
-        print("Warning: Separate src_vocab/tgt_vocab not found, falling back to single vocab.")
+        print(f"Warning: Separate src_vocab/tgt_vocab not found at {src_vocab_path} and {tgt_vocab_path}, falling back to single vocab.")
         vocab = load_object(os.path.join(args.model_path, 'vocab'))
         src_vocab = vocab
         tgt_vocab = vocab
