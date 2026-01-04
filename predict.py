@@ -10,6 +10,48 @@ from serialization import load_object
 from constants import MODEL_START_FORMAT
 
 
+class SimpleField:
+    """Simple field-like object that wraps vocab for compatibility"""
+    def __init__(self, vocab, add_sos=False, add_eos=True):
+        """
+        Args:
+            vocab: Vocabulary object
+            add_sos: Whether to add <sos> token when processing
+            add_eos: Whether to add <eos> token when processing
+        """
+        self.vocab = vocab
+        self.add_sos = add_sos
+        self.add_eos = add_eos
+    
+    def preprocess(self, text):
+        """Tokenize text by splitting on whitespace"""
+        return text.strip().split()
+    
+    def process(self, batch):
+        """Convert list of token lists to tensor"""
+        # Process tokens to indices
+        processed = []
+        for tokens in batch:
+            indices = []
+            if self.add_sos:
+                indices.append(self.vocab.stoi['<sos>'])
+            indices.extend([self.vocab.stoi.get(tok, self.vocab.stoi['<unk>']) for tok in tokens])
+            if self.add_eos:
+                indices.append(self.vocab.stoi['<eos>'])
+            processed.append(indices)
+        
+        # Pad to same length
+        pad_idx = self.vocab.stoi['<pad>']
+        max_len = max(len(seq) for seq in processed)
+        padded = []
+        for seq in processed:
+            padded.append(seq + [pad_idx] * (max_len - len(seq)))
+        
+        # Convert to tensor (seq_len, batch_size)
+        tensor = torch.tensor(padded, dtype=torch.long).t()
+        return tensor
+
+
 class ModelDecorator(nn.Module):
     """
     Simple decorator around Seq2SeqPredict model which packs input question in list and unpacks output list into single
@@ -69,8 +111,41 @@ def main():
     print('Args loaded')
     model_args = load_object(os.path.join(args.model_path, 'args'))
     print('Model args loaded.')
-    vocab = load_object(os.path.join(args.model_path, 'vocab'))
-    print('Vocab loaded.')
+    
+    # Load vocabularies with backward compatibility
+    src_vocab_path = os.path.join(args.model_path, 'src_vocab')
+    tgt_vocab_path = os.path.join(args.model_path, 'tgt_vocab')
+    legacy_vocab_path = os.path.join(args.model_path, 'vocab')
+    
+    src_vocab = None
+    tgt_vocab = None
+    
+    if os.path.exists(src_vocab_path):
+        src_vocab = load_object(src_vocab_path)
+        print('Source vocab loaded.')
+    
+    if os.path.exists(tgt_vocab_path):
+        tgt_vocab = load_object(tgt_vocab_path)
+        print('Target vocab loaded.')
+    
+    # Fallback to legacy vocab if either is missing
+    if src_vocab is None or tgt_vocab is None:
+        if os.path.exists(legacy_vocab_path):
+            print(f'Using legacy single vocab for missing vocabularies.')
+            print(f'Checked paths: src_vocab={src_vocab_path}, tgt_vocab={tgt_vocab_path}')
+            legacy_vocab = load_object(legacy_vocab_path)
+            if src_vocab is None:
+                src_vocab = legacy_vocab
+            if tgt_vocab is None:
+                tgt_vocab = legacy_vocab
+        else:
+            raise FileNotFoundError(
+                f"No vocabulary files found.\n"
+                f"Checked paths:\n"
+                f"  - {src_vocab_path}\n"
+                f"  - {tgt_vocab_path}\n"
+                f"  - {legacy_vocab_path}"
+            )
 
     cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda' if cuda else 'cpu')
@@ -78,19 +153,17 @@ def main():
     
     print("Using %s for inference" % ('GPU' if cuda else 'CPU'))
 
-    field = field_factory(model_args)
-    field.vocab = vocab
-    # For inference, we need both src and tgt metadata.
-    # LIMITATION: During training, only TGT vocab is saved. For same-direction translation
-    # (e.g., model trained on en-de and used on en-de), using TGT vocab for both
-    # is acceptable IF the source and target vocabularies have the same size.
-    # FUTURE WORK: Save both src_vocab and tgt_vocab during training to support
-    # different vocab sizes and cross-direction inference.
-    tgt_metadata = metadata_factory(model_args, vocab)
-    src_metadata = metadata_factory(model_args, vocab)
+    # Create separate fields for source and target
+    # Source: only add <eos> (no <sos>), matching training behavior
+    # Target: used only for decoding, SOS/EOS indices handled by Seq2SeqPredict
+    src_field = SimpleField(src_vocab, add_sos=False, add_eos=True)
+    tgt_field = SimpleField(tgt_vocab, add_sos=False, add_eos=False)
+    
+    tgt_metadata = metadata_factory(model_args, tgt_vocab)
+    src_metadata = metadata_factory(model_args, src_vocab)
 
     model = ModelDecorator(
-        predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path, args.epoch), field))
+        predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path, args.epoch), src_field, tgt_field))
     model = model.to(device)
     print('model loaded')
     model.eval()

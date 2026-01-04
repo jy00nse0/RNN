@@ -3,11 +3,53 @@
 import torch
 import os
 import argparse
-import sacrebleu
+import subprocess
 from model import predict_model_factory
 from dataset import field_factory, metadata_factory
 from serialization import load_object
 from constants import MODEL_START_FORMAT
+
+
+class SimpleField:
+    """Simple field-like object that wraps vocab for compatibility"""
+    def __init__(self, vocab, add_sos=False, add_eos=True):
+        """
+        Args:
+            vocab: Vocabulary object
+            add_sos: Whether to add <sos> token when processing
+            add_eos: Whether to add <eos> token when processing
+        """
+        self.vocab = vocab
+        self.add_sos = add_sos
+        self.add_eos = add_eos
+    
+    def preprocess(self, text):
+        """Tokenize text by splitting on whitespace"""
+        return text.strip().split()
+    
+    def process(self, batch):
+        """Convert list of token lists to tensor"""
+        # Process tokens to indices
+        processed = []
+        for tokens in batch:
+            indices = []
+            if self.add_sos:
+                indices.append(self.vocab.stoi['<sos>'])
+            indices.extend([self.vocab.stoi.get(tok, self.vocab.stoi['<unk>']) for tok in tokens])
+            if self.add_eos:
+                indices.append(self.vocab.stoi['<eos>'])
+            processed.append(indices)
+        
+        # Pad to same length
+        pad_idx = self.vocab.stoi['<pad>']
+        max_len = max(len(seq) for seq in processed)
+        padded = []
+        for seq in processed:
+            padded.append(seq + [pad_idx] * (max_len - len(seq)))
+        
+        # Convert to tensor (seq_len, batch_size)
+        tensor = torch.tensor(padded, dtype=torch.long).t()
+        return tensor
 
 
 def parse_args():
@@ -20,6 +62,7 @@ def parse_args():
     parser.add_argument('-r', '--reference-path', required=True, help='Path to reference file.')
     parser.add_argument('--max-seq-len', type=int, default=30, help='Maximum length for output sequence.')
     parser.add_argument('--cuda', action='store_true', default=False, help='Use cuda if available.')
+    parser.add_argument('--lowercase', action='store_true', default=False, help='Lowercase for BLEU evaluation.')
     return parser.parse_args()
 
 
@@ -50,36 +93,62 @@ def get_answers(model, questions, args):
     return answers
 
 
-class SimpleField:
-    """Simple field-like object that wraps vocab for compatibility"""
-    def __init__(self, vocab):
-        self.vocab = vocab
+def calculate_bleu_with_perl(hypotheses, reference_path, lowercase=False):
+    """
+    Calculate BLEU score using multi-bleu.perl script.
     
-    def preprocess(self, text):
-        """Tokenize text by splitting on whitespace"""
-        return text.strip().split()
+    Args:
+        hypotheses: List of hypothesis strings
+        reference_path: Path to reference file
+        lowercase: Whether to use lowercase comparison
     
-    def process(self, batch):
-        """Convert list of token lists to tensor"""
-        max_len = max(len(tokens) for tokens in batch)
-        # Add <sos> and <eos> tokens
-        processed = []
-        for tokens in batch:
-            indices = [self.vocab.stoi['<sos>']] + \
-                      [self.vocab.stoi.get(tok, self.vocab.stoi['<unk>']) for tok in tokens] + \
-                      [self.vocab.stoi['<eos>']]
-            processed.append(indices)
-        
-        # Pad to same length
-        pad_idx = self.vocab.stoi['<pad>']
-        max_len = max(len(seq) for seq in processed)
-        padded = []
-        for seq in processed:
-            padded.append(seq + [pad_idx] * (max_len - len(seq)))
-        
-        # Convert to tensor (seq_len, batch_size)
-        tensor = torch.tensor(padded, dtype=torch.long).t()
-        return tensor
+    Returns:
+        BLEU score string from multi-bleu.perl
+    """
+    script_path = os.path.join(os.path.dirname(__file__), 'multi-bleu.perl')
+    
+    # Check if script exists
+    if not os.path.exists(script_path):
+        raise FileNotFoundError(
+            f"multi-bleu.perl not found at {script_path}. "
+            "Please ensure the script is present in the repository root."
+        )
+    
+    # Prepare command
+    cmd = ['perl', script_path]
+    if lowercase:
+        cmd.append('-lc')
+    cmd.append(reference_path)
+    
+    # Run multi-bleu.perl with hypotheses as stdin
+    hypotheses_text = '\n'.join(hypotheses) + '\n'
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            input=hypotheses_text,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        error_msg = (
+            f"Error running multi-bleu.perl: {e}\n"
+            f"stderr: {e.stderr}\n"
+            f"Make sure perl is installed and multi-bleu.perl is executable.\n"
+            f"You can make it executable with: chmod +x {script_path}"
+        )
+        print(error_msg)
+        raise RuntimeError(error_msg) from e
+    except FileNotFoundError as e:
+        error_msg = (
+            f"perl not found. Please install perl to use multi-bleu.perl.\n"
+            f"On Ubuntu/Debian: sudo apt-get install perl\n"
+            f"On macOS: perl is typically pre-installed"
+        )
+        print(error_msg)
+        raise RuntimeError(error_msg) from e
 
 
 def main():
@@ -167,9 +236,9 @@ def main():
     
     answers = get_answers(model, questions, args)
 
-    bleu = sacrebleu.corpus_bleu(answers, [ref_answers])
-
-    print(bleu)
+    # Use multi-bleu.perl for BLEU calculation
+    bleu_output = calculate_bleu_with_perl(answers, args.reference_path, lowercase=args.lowercase)
+    print(bleu_output)
 
 
 if __name__ == '__main__':

@@ -381,15 +381,19 @@ def save_training_metrics(save_path, epoch, metrics):
         f.write('\n')
 
 
-def evaluate(model, val_iter, metadata, reverse_src=False, verbose=False):
+def evaluate(model, val_iter, metadata, reverse_src=False, verbose=False, collect_loss_history=False):
     """
     [OPTIMIZED] Evaluate model on validation set.
     - Changed view() to reshape() for safer tensor operations.
     - Added perplexity calculation and min/max loss tracking
+    - Uses torch.no_grad() to avoid graph creation during validation
+    
+    Args:
+        collect_loss_history: Whether to collect batch-level loss history
     """
     model.eval()
     total_loss = 0
-    batch_losses = []
+    batch_losses = [] if collect_loss_history else None
     
     with torch.no_grad():
         for batch in tqdm(val_iter, desc="Evaluating", leave=False):
@@ -407,15 +411,20 @@ def evaluate(model, val_iter, metadata, reverse_src=False, verbose=False):
                 answer[1:].reshape(-1),
                 ignore_index=metadata.padding_idx
             )
-            batch_losses.append(loss.item())
+            if collect_loss_history:
+                batch_losses.append(loss.item())
             total_loss += loss.item()
     
     avg_loss = total_loss / len(val_iter)
     
     if verbose:
         perplexity = calculate_perplexity(avg_loss)
-        min_loss = min(batch_losses) if batch_losses else avg_loss
-        max_loss = max(batch_losses) if batch_losses else avg_loss
+        if collect_loss_history and batch_losses:
+            min_loss = min(batch_losses)
+            max_loss = max(batch_losses)
+        else:
+            min_loss = avg_loss
+            max_loss = avg_loss
         print(f"\n  📊 Validation Metrics:")
         print(f"     Loss: {avg_loss:.4f} | Perplexity: {perplexity:.2f}")
         print(f"     Min Loss: {min_loss:.4f} | Max Loss: {max_loss:.4f}")
@@ -425,7 +434,7 @@ def evaluate(model, val_iter, metadata, reverse_src=False, verbose=False):
 
 def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False, 
           use_amp=False, scaler=None, epoch=0, save_path=None, vocab=None, 
-          debug=False, log_interval=100):
+          debug=False, log_interval=100, collect_loss_history=False):
     """
     [OPTIMIZED] Train model for one epoch.
     
@@ -449,6 +458,7 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
         vocab: Vocabulary for logging
         debug: Enable per-batch logging
         log_interval: Batch interval for logging
+        collect_loss_history: Whether to collect batch-level loss history
     
     Returns:
         avg_loss: Average training loss for the epoch
@@ -461,7 +471,7 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
     
     model.train()
     total_loss = 0
-    batch_losses = []
+    batch_losses = [] if collect_loss_history else None
     grad_norms = []
     
     # Get current learning rate
@@ -510,7 +520,7 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
             optimizer.zero_grad(set_to_none=True)
         else:
             # Standard training (FP32)
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             loss.backward()
             grad_norm = clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
@@ -518,7 +528,8 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
         # Track statistics
         batch_loss = loss.item()
         total_loss += batch_loss
-        batch_losses.append(batch_loss)
+        if collect_loss_history:
+            batch_losses.append(batch_loss)
         grad_norms.append(grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm)
         
         # Log batch statistics every 100 batches
@@ -527,12 +538,21 @@ def train(model, optimizer, train_iter, metadata, grad_clip, reverse_src=False,
     avg_loss = total_loss / len(train_iter)
     avg_grad_norm = np.mean(grad_norms) if grad_norms else 0.0
     
-    return avg_loss, {
-        'batch_losses': batch_losses,
+    # Build stats dictionary
+    stats = {
         'avg_grad_norm': avg_grad_norm,
-        'min_loss': min(batch_losses) if batch_losses else avg_loss,
-        'max_loss': max(batch_losses) if batch_losses else avg_loss
     }
+    
+    # Only include batch-level statistics if loss history was collected
+    if collect_loss_history and batch_losses:
+        stats['batch_losses'] = batch_losses
+        stats['min_loss'] = min(batch_losses)
+        stats['max_loss'] = max(batch_losses)
+    else:
+        stats['min_loss'] = avg_loss
+        stats['max_loss'] = avg_loss
+    
+    return avg_loss, stats
 
 
 def adjust_learning_rate(optimizer, epoch, decay_start):
@@ -584,6 +604,8 @@ def main():
     save_vocab(tgt_vocab, os.path.join(args.save_path, 'tgt_vocab'))
     # Keep backward compatibility: 'vocab' is tgt_vocab
     save_vocab(tgt_vocab, os.path.join(args.save_path, 'vocab'))
+    save_vocab(src_vocab, os.path.join(args.save_path, 'src_vocab'))  # Save source vocabulary
+    save_vocab(tgt_vocab, os.path.join(args.save_path, 'tgt_vocab'))  # Save target vocabulary
     save_object(args, os.path.join(args.save_path, 'args'))
     print('Done')
 
@@ -649,7 +671,8 @@ def main():
                 save_path=args.save_path,
                 vocab=tgt_vocab,
                 debug=args.debug,
-                log_interval=args.log_interval
+                log_interval=args.log_interval,
+                collect_loss_history=args.plot_loss_graph
             )
             
             # Evaluate on validation set
@@ -658,7 +681,8 @@ def main():
                 val_iter=val_iter,
                 metadata=tgt_metadata,  # Use TGT metadata for loss/output dimension
                 reverse_src=args.reverse,
-                verbose=args.debug
+                verbose=args.debug,
+                collect_loss_history=args.plot_loss_graph
             )
             
             # Generate and display sample translations
@@ -685,18 +709,19 @@ def main():
             print(f"  Time: {elapsed}")
             print("=" * 70)
 
-            # Save training metrics to file
-            metrics = {
-                'train_loss': train_loss,
-                'train_ppl': train_ppl,
-                'val_loss': val_loss,
-                'val_ppl': val_ppl,
-                'avg_grad_norm': train_stats['avg_grad_norm'],
-                'min_train_loss': train_stats['min_loss'],
-                'max_train_loss': train_stats['max_loss'],
-                'time_seconds': elapsed.total_seconds()
-            }
-            save_training_metrics(args.save_path, epoch + 1, metrics)
+            # Save training metrics to file (only if plotting is enabled)
+            if args.plot_loss_graph:
+                metrics = {
+                    'train_loss': train_loss,
+                    'train_ppl': train_ppl,
+                    'val_loss': val_loss,
+                    'val_ppl': val_ppl,
+                    'avg_grad_norm': train_stats['avg_grad_norm'],
+                    'min_train_loss': train_stats['min_loss'],
+                    'max_train_loss': train_stats['max_loss'],
+                    'time_seconds': elapsed.total_seconds()
+                }
+                save_training_metrics(args.save_path, epoch + 1, metrics)
 
             # Save model
             if args.save_every_epoch or not best_val_loss or val_loss < best_val_loss:
@@ -722,7 +747,8 @@ def main():
         val_iter=test_iter,
         metadata=tgt_metadata,  # Use TGT metadata
         reverse_src=args.reverse,
-        verbose=args.debug
+        verbose=args.debug,
+        collect_loss_history=False  # No need to collect loss history for final test
     )
     
     print(f"Test loss: {test_loss:.4f}")
