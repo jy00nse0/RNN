@@ -43,8 +43,12 @@ class Seq2SeqTrain(nn.Module):
             decoder_input.size(0), batch_size, self.vocab_size,
             dtype=encoder_outputs.dtype, device=answer.device
         )
+        
+        # Handle edge case: if decoder_input is empty (answer only contains <sos>)
+        if decoder_input.size(0) == 0:
+            return outputs
+        
         kwargs = {}
-        input_word = answer[0]  
         input_word = decoder_input[0]
         #for t in range(answer_seq_len - 1):
         for t in range(decoder_input.size(0)):
