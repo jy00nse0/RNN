@@ -131,14 +131,21 @@ def main():
     # Fallback to legacy vocab if either is missing
     if src_vocab is None or tgt_vocab is None:
         if os.path.exists(legacy_vocab_path):
-            print('Using legacy single vocab for missing vocabularies.')
+            print(f'Using legacy single vocab for missing vocabularies.')
+            print(f'Checked paths: src_vocab={src_vocab_path}, tgt_vocab={tgt_vocab_path}')
             legacy_vocab = load_object(legacy_vocab_path)
             if src_vocab is None:
                 src_vocab = legacy_vocab
             if tgt_vocab is None:
                 tgt_vocab = legacy_vocab
         else:
-            raise FileNotFoundError("No vocabulary files found (src_vocab, tgt_vocab, or vocab)")
+            raise FileNotFoundError(
+                f"No vocabulary files found.\n"
+                f"Checked paths:\n"
+                f"  - {src_vocab_path}\n"
+                f"  - {tgt_vocab_path}\n"
+                f"  - {legacy_vocab_path}"
+            )
 
     cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda' if cuda else 'cpu')

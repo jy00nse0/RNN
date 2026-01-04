@@ -107,6 +107,13 @@ def calculate_bleu_with_perl(hypotheses, reference_path, lowercase=False):
     """
     script_path = os.path.join(os.path.dirname(__file__), 'multi-bleu.perl')
     
+    # Check if script exists
+    if not os.path.exists(script_path):
+        raise FileNotFoundError(
+            f"multi-bleu.perl not found at {script_path}. "
+            "Please ensure the script is present in the repository root."
+        )
+    
     # Prepare command
     cmd = ['perl', script_path]
     if lowercase:
@@ -126,9 +133,22 @@ def calculate_bleu_with_perl(hypotheses, reference_path, lowercase=False):
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        print(f"Error running multi-bleu.perl: {e}")
-        print(f"stderr: {e.stderr}")
-        raise
+        error_msg = (
+            f"Error running multi-bleu.perl: {e}\n"
+            f"stderr: {e.stderr}\n"
+            f"Make sure perl is installed and multi-bleu.perl is executable.\n"
+            f"You can make it executable with: chmod +x {script_path}"
+        )
+        print(error_msg)
+        raise RuntimeError(error_msg) from e
+    except FileNotFoundError as e:
+        error_msg = (
+            f"perl not found. Please install perl to use multi-bleu.perl.\n"
+            f"On Ubuntu/Debian: sudo apt-get install perl\n"
+            f"On macOS: perl is typically pre-installed"
+        )
+        print(error_msg)
+        raise RuntimeError(error_msg) from e
 
 
 def main():
@@ -158,6 +178,7 @@ def main():
         if tgt_vocab is None:
             missing_paths.append(tgt_vocab_path)
         print(f"Warning: Separate src_vocab/tgt_vocab missing at: {', '.join(missing_paths)}. Filling missing vocab(s) from legacy single vocab.")
+        print(f"Checked paths: {', '.join(missing_paths)}")
         
         if os.path.exists(legacy_vocab_path):
             legacy_vocab = load_object(legacy_vocab_path)
@@ -166,7 +187,13 @@ def main():
             if tgt_vocab is None:
                 tgt_vocab = legacy_vocab
         else:
-            raise FileNotFoundError("No vocabulary files found (src_vocab, tgt_vocab, or vocab)")
+            raise FileNotFoundError(
+                f"No vocabulary files found.\n"
+                f"Checked paths:\n"
+                f"  - {src_vocab_path}\n"
+                f"  - {tgt_vocab_path}\n"
+                f"  - {legacy_vocab_path}"
+            )
 
     cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda' if cuda else 'cpu')
