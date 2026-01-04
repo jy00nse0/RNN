@@ -599,6 +599,8 @@ def main():
     print('Done.')
 
     print('Saving vocab and args...', end='', flush=True)
+    # NOTE: Target vocab is saved twice (legacy 'vocab' and explicit 'tgt_vocab') to keep old checkpoints/scripts working.
+    # Both are written from the same object to remain consistent.
     # Save legacy single-vocab file for backward compatibility with older checkpoints/scripts
     save_vocab(tgt_vocab, os.path.join(args.save_path, 'vocab'))
     save_vocab(src_vocab, os.path.join(args.save_path, 'src_vocab'))  # Save source vocabulary
