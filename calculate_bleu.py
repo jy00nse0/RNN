@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import torch
-import pandas as pd
 import os
 import argparse
 import sacrebleu
