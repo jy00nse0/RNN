@@ -89,15 +89,20 @@ def main():
     model_args = load_object(os.path.join(args.model_path, 'args'))
     src_vocab_path = os.path.join(args.model_path, 'src_vocab')
     tgt_vocab_path = os.path.join(args.model_path, 'tgt_vocab')
-    if os.path.exists(src_vocab_path) and os.path.exists(tgt_vocab_path):
-        src_vocab = load_object(src_vocab_path)
-        tgt_vocab = load_object(tgt_vocab_path)
-    else:
-        missing_paths = [path for path in (src_vocab_path, tgt_vocab_path) if not os.path.exists(path)]
-        print(f"Warning: Separate src_vocab/tgt_vocab not found at: {', '.join(missing_paths)}. Falling back to single vocab.")
-        vocab = load_object(os.path.join(args.model_path, 'vocab'))
-        src_vocab = vocab
-        tgt_vocab = vocab
+    src_vocab = load_object(src_vocab_path) if os.path.exists(src_vocab_path) else None
+    tgt_vocab = load_object(tgt_vocab_path) if os.path.exists(tgt_vocab_path) else None
+    if src_vocab is None or tgt_vocab is None:
+        missing_paths = []
+        if src_vocab is None:
+            missing_paths.append(src_vocab_path)
+        if tgt_vocab is None:
+            missing_paths.append(tgt_vocab_path)
+        print(f"Warning: Separate src_vocab/tgt_vocab missing at: {', '.join(missing_paths)}. Filling missing vocab(s) from legacy single vocab.")
+        legacy_vocab = load_object(os.path.join(args.model_path, 'vocab'))
+        if src_vocab is None:
+            src_vocab = legacy_vocab
+        if tgt_vocab is None:
+            tgt_vocab = legacy_vocab
 
     cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda' if cuda else 'cpu')
