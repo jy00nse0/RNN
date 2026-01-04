@@ -17,10 +17,10 @@ def train_model_factory(args, src_metadata, tgt_metadata):
     return Seq2SeqTrain(encoder, decoder, tgt_metadata.vocab_size, teacher_forcing_ratio=args.teacher_forcing_ratio)
 
 
-def predict_model_factory(args, src_metadata, tgt_metadata, model_path, field):
+def predict_model_factory(args, src_metadata, tgt_metadata, model_path, src_field, tgt_field):
     train_model = train_model_factory(args, src_metadata, tgt_metadata)
     train_model.load_state_dict(get_state_dict(args, model_path))
-    return Seq2SeqPredict(train_model.encoder, train_model.decoder, field)
+    return Seq2SeqPredict(train_model.encoder, train_model.decoder, src_field, tgt_field)
 
 
 def get_state_dict(args, model_path):
