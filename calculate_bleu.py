@@ -87,7 +87,16 @@ def main():
     torch.set_grad_enabled(False)
     args = parse_args()
     model_args = load_object(os.path.join(args.model_path, 'args'))
-    vocab = load_object(os.path.join(args.model_path, 'vocab'))
+    src_vocab_path = os.path.join(args.model_path, 'src_vocab')
+    tgt_vocab_path = os.path.join(args.model_path, 'tgt_vocab')
+    try:
+        src_vocab = load_object(src_vocab_path)
+        tgt_vocab = load_object(tgt_vocab_path)
+    except FileNotFoundError:
+        print("Warning: Separate src_vocab/tgt_vocab not found, falling back to single vocab.")
+        vocab = load_object(os.path.join(args.model_path, 'vocab'))
+        src_vocab = vocab
+        tgt_vocab = vocab
 
     cuda = torch.cuda.is_available() and args.cuda
     device = torch.device('cuda' if cuda else 'cpu')
@@ -95,15 +104,10 @@ def main():
 
 
     # Create a simple field wrapper for vocab
-    field = SimpleField(vocab)
-    # For inference, we need both src and tgt metadata.
-    # LIMITATION: During training, only TGT vocab is saved. For same-direction translation
-    # (e.g., model trained on en-de and used on en-de), using TGT vocab for both
-    # is acceptable IF the source and target vocabularies have the same size.
-    # FUTURE WORK: Save both src_vocab and tgt_vocab during training to support
-    # different vocab sizes and cross-direction inference.
-    tgt_metadata = metadata_factory(model_args, vocab)
-    src_metadata = metadata_factory(model_args, vocab)
+    field = SimpleField(tgt_vocab)
+    # Use corresponding vocabularies for metadata creation, with backward compatibility fallback.
+    tgt_metadata = metadata_factory(model_args, tgt_vocab)
+    src_metadata = metadata_factory(model_args, src_vocab)
 
     model = predict_model_factory(model_args, src_metadata, tgt_metadata, get_model_path(args.model_path, args.epoch), field)
     model = model.to(device)
